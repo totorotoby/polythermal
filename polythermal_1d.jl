@@ -74,6 +74,8 @@ function assemble_matrix!(Ne, Nbasis, p,
     end
 end
 
+
+
 function assemble_forcing!(Ne, Nbasis, p, x, func1, func2, forcing, F)
     for e in 1:Ne
         nodes = EToN(e, p, x)
@@ -168,7 +170,7 @@ end
  returns nodes in element =#
 EToN(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 
-function timestep!(T, p, Δt)
+function timestep!(T, ϕ, Pc, p, Δt)
 
     z = p.z
     K = p.K
@@ -176,21 +178,39 @@ function timestep!(T, p, Δt)
     M = p.M
     F = p.F
     Tsurf = p.Tsurf
+    Γ = p.Γ_idx
 
-    # Crank-Nicolson
+    ### Crank-Nicolson for time discretization
     A = M + Δt/2 .* (K + S)
     # forcing term can be replaced with 2 time slices if variable
     R = (M - Δt/2 .* (K + S)) * T[:,2] + Δt/2 .* (F + F)
+
+    # TODO: restrict system to new cold portion
+    A, R = restrict_cold(A, R, Γ)
+    # this is redundent computation after the first timestep...
     enforce_dirchlet!(A, R, Tsurf, 1)
 
-    T[:,1] .= A\R
+    # solve for next temperature
+    T[Γ:end,1] .= A\R
     T[:,2] .= T[:,1]
 
-    #Γ_idx = argmin(abs.(T))
+    
+    
+end
 
-    
-    
-    
+function partition_temp_cold(T)
+    dist = abs.(T)
+    mindist = minimum(dist)
+    return findlast(==(mindist), dist)
+end
+
+function restrict_cold(A, R, Γ)
+    N = size(A)[1]
+
+    A = A[Γ:end,Γ:end]
+    R = R[Γ:end]
+
+    return A, R
 end
 
 let
@@ -199,8 +219,10 @@ let
     
     # velocity
     u(z) = -1.0
+    # inverse peclet number
+    Pe_inv(z) = 1.0
     # dissipation rate
-    a(z) = 1
+    a(z) = Pe_inv(z) * 1
     # thermal conductivity
     k = 1.0
     # gravitational acceleration
@@ -211,14 +233,16 @@ let
     δ = 1.0
     # ice viscosity
     η = 1.0
-    # inverse peclet number
-    Pe_inv = 1.0
-
+    ϕη(z) = 
+    
+    
     #---- testing solutions ----#
     # solution to steady BVP for temperature
-    cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
-        (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
-    
+    #cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
+    #    (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
+    s(t) = 3t^2 - 2t^3
+    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
+    initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
     
     #---- numerical parameters ----#
     
@@ -228,9 +252,9 @@ let
     p = 1
     # number of nodes
     N = p*Ne + 1
-    # domain boundarys [H, I]
+    # domain boundarys [H, B]
     H = 1
-    B = .5
+    B = 0
     # length of element
     h = (H-B)/(N-1)
     # nodes
@@ -246,11 +270,15 @@ let
     Tbase = 1
     # initial temperature data
     T = zeros(N, 2)
-    T[:, 2] = cold_steady_test.(z)
+    T[:, 2] = initial_temp.(z)
     # test parabola: -1.05/B^2 .* (z .- B).^2 .+ 1
+    
     # initial porosity    
-    ϕ = zeros(N)
-
+    ϕ = zeros(N, 2)
+    ϕ[:, 2] = initial_pore.(z)
+    
+    # compaction pressure
+    Pc = zeros(N)
     
     #---- building discrete operators ----#
     # NOTE: knowing the non-zero patterns are the same
@@ -284,6 +312,7 @@ let
                      I, J, Vmass)
     M = sparse(I, J, Vmass, N, N)
 
+    
     # generate dissipation source term in cold region
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
@@ -299,29 +328,26 @@ let
     =#
 
 
-    # cold transient test
+    # advective cfl
+    Δt = h/abs(u(1))
+
+    # get divide index
+    Γ_idx = partition_temp_cold(T[:,2])
+
     params = (z = z,
               K = K,
               S = S,
               M = M,
               F = F,
-              Tsurf = Tsurf)
+              Tsurf = Tsurf,
+              Γ_idx = Γ_idx,
+              Pe_inv = Pe_inv,
+              δ = δ,)
 
-    # advective cfl
-    Δt = h/abs(u(1))
-    
     for i = 0:0
-        timestep!(T, params, Δt)
-        display(plot(T[:,1], z))
-        display(plot!(cold_steady_test.(z), z))
-        sleep(.01)
+        timestep!(T, ϕ, Pc, params, Δt)
     end
 
-
-    
-
-
-    
     nothing
      
 end
