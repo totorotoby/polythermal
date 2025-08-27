@@ -180,21 +180,21 @@ function timestep!(T, ϕ, Pc, p, Δt)
     Tsurf = p.Tsurf
     Γ = p.Γ_idx
 
+    # TODO: this is probably pretty memory inefficent
+    M, K, S, F = restrict_cold(M, K, S, F, Γ)
+    
     ### Crank-Nicolson for time discretization
     A = M + Δt/2 .* (K + S)
     # forcing term can be replaced with 2 time slices if variable
-    R = (M - Δt/2 .* (K + S)) * T[:,2] + Δt/2 .* (F + F)
+    R = (M - Δt/2 .* (K + S)) * T[Γ:end,2] + Δt/2 .* (F + F)
 
-    # TODO: restrict system to new cold portion
-    A, R = restrict_cold(A, R, Γ)
     # this is redundent computation after the first timestep...
     enforce_dirchlet!(A, R, Tsurf, 1)
-
+    
     # solve for next temperature
     T[Γ:end,1] .= A\R
     T[:,2] .= T[:,1]
 
-    
     
 end
 
@@ -204,16 +204,37 @@ function partition_temp_cold(T)
     return findlast(==(mindist), dist)
 end
 
-function restrict_cold(A, R, Γ)
-    N = size(A)[1]
+function restrict_cold(M, K, S, F, Γ)
+    
+    N = size(M)[1]
 
-    A = A[Γ:end,Γ:end]
-    R = R[Γ:end]
+    Mn = M[1, :]
+    Kn = K[1, :]
+    Sn = S[1, :]
+    Fn = F[1]
+    
+    M = M[Γ:end,Γ:end]
+    K = K[Γ:end,Γ:end]
+    S = S[Γ:end,Γ:end]
+    F = F[Γ:end]
 
-    return A, R
+    M[1, :] = Mn[1 : N - Γ + 1]
+    K[1, :] = Kn[1 : N - Γ + 1]
+    S[1, :] = Sn[1 : N - Γ + 1]
+    F[1] = Fn
+    
+    return M, K, S, F 
 end
 
 let
+
+    #---- testing solutions ----#
+    # solution to steady BVP for temperature
+    #cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
+    #    (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
+    s(t) = 3t^2 - 2t^3
+    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
+    initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
     
     #---- physical parameters ----#
     
@@ -233,16 +254,6 @@ let
     δ = 1.0
     # ice viscosity
     η = 1.0
-    ϕη(z) = 
-    
-    
-    #---- testing solutions ----#
-    # solution to steady BVP for temperature
-    #cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
-    #    (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
-    s(t) = 3t^2 - 2t^3
-    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
-    initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
     
     #---- numerical parameters ----#
     
@@ -344,7 +355,7 @@ let
               Pe_inv = Pe_inv,
               δ = δ,)
 
-    for i = 0:0
+    for i = 0:500
         timestep!(T, ϕ, Pc, params, Δt)
     end
 
