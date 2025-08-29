@@ -4,6 +4,7 @@ include("sol_tests.jl")
 function timestep(T, ϕ, Pc, Γ, params, Δt)
 
     N = params.N
+    Ne = params.Ne
     p = params.p
     z = params.z
     K = params.K
@@ -22,7 +23,7 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     κ = params.κ
     
     #---- Set up domains to solve on by partitioning ----#
-    #=
+p    #=
     # TODO: this is probably pretty memory inefficent and should be done with views
     M, K, S, F = restrict_cold(M, K, S, F, Γ)
     
@@ -41,7 +42,7 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     =#
     #---- compaction pressure solve ----#
     ϕ[1:Γ, 1] .= 1
-    Kϕα, Mϕ, Fϕα, ϕαinterp = get_compaction_ops(Int(floor((Γ - 2)/p)), N,
+    Kϕα, Mϕ, Fϕα, ϕαinterp = get_compaction_ops(Ne, N,
                                                 p + 1, p, z,
                                                 ϕ, α)
 
@@ -54,16 +55,19 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     display(A)
     display(R)
     # sovle BVP for compation pressure
-    Pc[1:Γ-1] .= A\R
+    Pc .= A\R
 
     
-    dp = (Pc[Γ-1] - Pc[Γ-2])/(z[Γ-1] - z[Γ-2])
-    nv = dp + g/δ
+    #dp = (Pc[Γ-1] - Pc[Γ-2])/(z[Γ-1] - z[Γ-2])
+    #nv = dp + g/δ
 
-    test_sol = compation_test_1.(z[1:Γ-1])
+    test_sol = compation_test_1.(z)
+    error = sqrt(sum((Pc - test_sol).^2))
+
+    @show error
     
-    plot(test_sol, z[1:Γ-1])
-    display(plot!(Pc[1:Γ-1], z[1:Γ-1]))
+    plot(test_sol, z)
+    display(plot!(Pc, z))
     #@show nv
     @assert nv ≈ 0 
 

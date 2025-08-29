@@ -43,7 +43,7 @@ let
     # number of nodes
     N = p*Ne + 1
     # domain boundarys [H, B]
-    H = 1
+    H = .5
     B = 0
     # length of element
     h = (H-B)/(N-1)
@@ -98,9 +98,11 @@ let
     Δt = h/abs(u(1))
 
     # get divide index
-    Γ = partition_temp_cold(T[:,2])
+    # Γ = partition_temp_cold(T[:,2])
+    Γ = 0
     
     params = (N = N,
+              Ne = Ne, 
               p = p,
               z = z,
               K = K,
