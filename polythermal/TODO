@@ -1,0 +1,14 @@
+* DONE Figure out how to reimpose neumann on restricted cold domain 
+* DONE Do L2 projection for porosity source term in elliptic equation for Pc
+* DONE get correct matrix dimensions for temperate region
+* DONE get compaction solver working
+* DONE get porosity solver working
+
+* TODO is neumann correct for compaction? Don't think so probably has something to do with moving the gravity term to the RHS to early.
+
+* TODO Fix spatially variable coefficents and non varying to make cleaner.
+
+* TODO redo basis functions so they are at Legendre polynomial roots and GLL will produce diagonal mass matrix
+
+* TODO fix Neumann boundary instability for higher order elements ??? UGH
+
