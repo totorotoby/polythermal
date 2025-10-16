@@ -3,7 +3,7 @@ using Arpack
 include("assemble.jl")
 include("sol_tests.jl")
 
-function timestep(T, ϕ, Pc, Γ, params, Δt)
+function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -25,6 +25,24 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     Nt = Γ_nodes[end]
     Nc = N - Nt
 
+    #---- compaction pressure solve ----#
+    ϕh = get_porosity(H[:,2], 0)
+    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
+                                                       p + 1, p, z,
+                                                       ϕh, α)
+    
+    A = -κ * δ .* Kcomp - 1/η .* Mcomp
+    R = κ * g .* Fcomp
+    enforce_dirchlet!(A, R, Pcbase, 0)
+
+    # sovle BVP for compation pressure
+    Pc[1:Nt] .= A\R
+
+
+    #---- enthalpy solver ----#
+    K, S, Mpc, Mlump, F = get_enth_ops(Ne, p+1, p, z, u, a, Pc)
+
+    
     #---- Set up domains to solve on by partitioning ----#
     # TODO: this is probably pretty memory inefficent and should be done with views, and rescaling of matrices
     #---- get cold operators ----#
@@ -42,18 +60,6 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     T[Nt:end,1] .= A\R
     T[:, 2] .= T[:,1]
     
-    #---- compaction pressure solve ----#
-    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
-                                                       p + 1, p, z,
-                                                       ϕ, α)
-    
-    A = -κ * δ .* Kcomp - 1/η .* Mcomp
-    R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 0)
-
-    # sovle BVP for compation pressure
-    Pc[1:Nt] .= A\R
-
     #---- porosity solve ----#
     Mlump, Mpc, Stemp, Ftemp = get_porosity_ops(Γ, p + 1, p, z[1:Nt], u, a, Pc[1:Nt])
     
@@ -70,7 +76,7 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     display(plot!(T[:,1], z, label="T"))
     #sleep(.05)
     # re-partition
-    return (partition_temp_cold(T[:, 1], p, z), ϕ, T, Pc)
+    return (partition_temp_cold(T[:, 1], p, z), H, ϕ, T, Pc)
     
 end
 

@@ -68,6 +68,8 @@ let
     # initial enthalpy
     H = zeros(N, 2)
     H[:, 2] = initial_enth.(z)
+
+    display(plot(H[:,2], z))
     
     # initial temperature data
     T = zeros(N, 2)
@@ -106,7 +108,7 @@ let
               κ = κ)
     
     for i = 1:200
-        (Γ, ϕ, T, Pc) = timestep(T, ϕ, Pc, Γ, params, Δt)
+        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 
     nothing
