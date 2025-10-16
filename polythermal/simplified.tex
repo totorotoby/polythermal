@@ -1,0 +1,156 @@
+\documentclass[a4paper,12pt]{article}
+\setlength{\oddsidemargin}{-0.33in}
+\setlength{\evensidemargin}{0in}
+\setlength{\textwidth}{7in}
+\setlength{\textheight}{10.2in}
+\setlength{\footskip}{.5in}
+
+\setlength{\voffset}{-.5in}
+\setlength{\topmargin}{-0.5in}
+\setlength{\headheight}{.5in}
+\setlength{\headsep}{12pt}
+
+\setlength\parindent{0pt}
+
+% \usepackage{savetrees}
+\usepackage{stmaryrd}
+\usepackage{hyperref}
+\usepackage{color}
+\usepackage{outlines}
+\usepackage{rotating}
+\usepackage{overpic}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{fancyhdr,lastpage}
+\usepackage{enumerate}
+\usepackage{graphicx}
+\usepackage{epstopdf}
+\usepackage{rotating}
+\usepackage{mathrsfs}
+\usepackage{tipa}
+\usepackage{setspace}
+\usepackage{natbib}
+
+%\doublespacing
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+\newcommand{\real}[1]{\Re\left\{#1\right\}}
+\newcommand{\TD}[2]{\frac{D#1}{D#2}}
+\newcommand{\td}[2]{\frac{d#1}{d #2}}
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\newcommand{\pdd}[3]{\frac{\partial^2 #1}{\partial #2 \partial #3}}
+\newcommand{\pdt}[2]{\frac{\partial^2 #1}{\partial #2 ^2}}
+\newcommand{\expv}[1]{\left \langle #1 \right \rangle}
+\newcommand{\tensort}[1]{\underline{\underline{#1}}}
+\newcommand{\erf}[1]{\mbox{erf}{\left( {#1}\right)}}
+\newcommand{\erfc}[1]{\mbox{erfc}{\left( {#1}\right)}}
+\newcommand{\ands}{ \ \ \ \mbox{ and } \ \ \ }
+\newcommand{\spword}[1]{ \ \ \ \mbox{ {#1} } \ \ \ }
+
+\begin{document}
+\title{Polythermal Equation Solution methods}
+\author{Toby Harvey}
+\maketitle
+\vspace{-1cm}
+
+\section{1D - 3 equation system}
+
+\subsection{Cold Ice}
+
+\subsubsection{Temperature Equation}
+\begin{align}
+  \rho c \left(\pd{T}{t} + u \pd{T}{z}\right) - \pd{}z\left(K \pd{T}{z}\right) = a \\
+  T(H,t) = T_0\\
+  \pd{T(\Gamma,t)}{z} = T(\Gamma,t) = 0
+\end{align}
+
+\begin{center}
+\begin{tabular}{ |c|c|c| } 
+ \hline
+  Parameter & Name & units\\
+  \hline
+  $\rho$ & ice density & $\frac{kg}{m^3}$\\
+  \hline
+  $c$ & heat capacity of ice & $\frac{J}{kg K^\circ}$\\
+  \hline
+  $K$ & Thermal conductivity & $\frac{J}{ ms K^\circ}$\\
+  \hline
+  $a$ & viscous dissipation & $\frac{J}{m^3 s}$\\
+  \hline
+  $T_0$ & surface temperature & $K^\circ$\\
+  \hline
+  $\Gamma$ & cold-temperate interface & \\
+  \hline
+\end{tabular}
+\end{center}
+
+\subsection{Temperate Ice}
+
+\subsubsection{Compaction Pressure ($P_e$) equation}
+
+\begin{align}
+  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta} \label{eq:pe-equation}\\
+  &p_e(0,t) = N_0\\
+  &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
+\end{align}
+
+\subsubsection{Porosity ($\phi$) equation}
+
+\begin{align}
+  &\pd{\phi}{t} + u\pd{\phi}{z} + \frac{\phi p_e}{\eta} = \frac{a}{\rho L}\\
+  &\phi(\Gamma, t) = 0\\
+\end{align}
+
+
+\begin{center}
+\begin{tabular}{ |c|c|c| } 
+ \hline
+  Parameter & Name & units\\
+  \hline
+  $\kappa$ & permeability & $\frac{m^2}{Pa s}$\\
+  $\alpha$ & Carman–Kozeny coefficent & unitless\\
+  $\eta$ & viscosity & $Pa s$\\
+  $L$ & Latent heat of freezing & $\frac{J}{kg}$\\
+  \hline
+\end{tabular}
+\end{center}
+
+\section{1D - ethalpy system}
+
+\subsection{ethalpy ($H$) equation}
+
+Define enthalpy as:
+
+\begin{align*}
+  h = \rho c T + \rho L \phi
+\end{align*}
+
+Then the temperature equation and porosity equation combine to:
+
+\begin{align*}
+\pd{h}{t} + u \pd{h}{z} - \pd{}{z}\left(K \pd{T}{z}\right) + \frac{\phi p_e}{\eta} = a
+\end{align*}
+
+Where $\phi(\Omega_c, 0) = 0$, and $T(\Omega_t, 0) = T_m$, and $\Omega_c$, and $\Omega_T$ are the cold and temeperate regions respectively. And the compaction pressure is still solved for:
+
+\begin{align}
+  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta} \label{eq:pe-equation}\\
+  &p_e(0,t) = N_0\\
+  &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
+\end{align}
+
+\section{general enthalpy system}
+
+For now we assume that the temperate layer is never on the surface:
+
+\begin{align*}
+  &h = \rho c T + \rho L \phi\\
+  &\pd{h}{t} + u \cdot \nabla h - \nabla \cdot \left(K \nabla T\right) + \frac{\phi p_e}{\eta} = a\\
+  &h(L, t) = T_{surf}\\
+\end{align*}
+
+
+
+
+\end{document}

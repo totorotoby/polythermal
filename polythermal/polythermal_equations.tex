@@ -475,15 +475,17 @@ For the cold region we solve:
 \begin{align}
   Pe\pd{T}{t} + Pe u \pd{T}{z} - \pdt{T}{z} = a \\
   T(H) = T_0\\
-  \pd{T(\Gamma)}{z} = 0
+  \pd{T(\Gamma)}{z} = T(\Gamma) = 0
 \end{align}
 
-For the temperate ice we solve:
+For the temperate ice we solve for $p_e$, and $\phi$:
 
 \begin{align}
   &\pd{}{z}\left(\kappa\phi^\alpha\left(g + \delta\pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta} \label{eq:pe-equation}\\
   &p_e(0) = N_0\\
-  &\left(\kappa \phi^\alpha\left( g + \delta \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma} = 0\\
+  &\left(\kappa \phi^\alpha\left( g + \delta \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma} = 0 ~~~ \text{or} ~~~ p_e(\Gamma) = 0\\
+\end{align}
+\begin{align}
   &Pe\pd{\phi}{t} + Pe u \pd{\phi}{z} + \phi p_e = a \label{eq:phi-equation}\\
   &\phi(\Gamma) = 0\\
 \end{align}
@@ -522,6 +524,10 @@ For the temperate region solve \eqref{eq:pe-equation} with previous $\phi$ for $
   &-\kappa \delta K p_e - \frac{1}{\eta}M p_e = \kappa g F_g - \left(\kappa\phi^\alpha\left(g + \delta\pd{p_e}{z}\right)\right)\psi_i \bigg\rvert_R^L\\
   & K_{ij} = \int_k\pd{\psi_i}{z}\phi^{\alpha}\pd{\psi_i}{z} ~~~ M_{ij} = \int_k \psi_i \phi \psi_j ~~~ F_i = \int_k \phi^{\alpha}\pd{\psi_i}{z}
 \end{align*}
+
+Finally the porosity equation is:
+
+
 
 
 \subsection{1D polythermal model: Haseloff}

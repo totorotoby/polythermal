@@ -74,13 +74,13 @@ This function assembles a discrete diffusion and advection operators from the ba
 function assemble_matrix!(Ne, Nbasis, p,
                           x, func1, func2, k,
                           I, J, V)
+
     for e in 1:Ne
         for i in 1:Nbasis
             row = (p*e) + (i-p)
             for j in 1:Nbasis
                 col = (p*e) + (j-p)
                 nodes = EToX(e, p, x)
-                
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), k)
                 idx = inCOO(I, J, row, col)
                 
@@ -192,15 +192,22 @@ end
 EToX(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 EToN(e, p) = (e-1)*p + 1 : (e-1)*p + p + 1
 
+function get_temp(H, T_m)
+    return min.(T_m, H)
+end
 
-function get_temperature_ops(N, Ne, Nbasis, p, z, u, ϕ, a, α)
+function get_porosity(H, T_m)
+    return max.(T_m, H)
+end
+
+function get_temperature_ops(Ne, Nbasis, p, z, u, a, α)
 
     #---- building discrete operators ----#
     # NOTE: knowing the non-zero patterns are the same
     # for the matrices I could be generating one large
     # matrix by doing operations on the values then constructing
 
-    
+    N = p*Ne + 1
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -214,6 +221,7 @@ function get_temperature_ops(N, Ne, Nbasis, p, z, u, ϕ, a, α)
     # generate advective (first derivative) operator matrix
     I = Int64[]
     J = Int64[]
+
     Vadv = Float64[]
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, dlb, u,
@@ -240,26 +248,27 @@ end
 
 # TODO: probably don't need to recompute all the gaussian integration here
 # can probably just generate new diagonals to multiply K M and F by
-function get_compaction_ops(Ne, N, Nbasis, p, z, ϕ, α)
+function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
 
+    N = p*Ne + 1
+
+    ϕ = ϕ .+ .000001
     
     ϕinterp = Val -> expansion(Val, p, ϕ, z)
     ϕαinterp = Val -> expansion(Val, p, ϕ.^α, z)
 
     #display(plot(ϕαinterp.(z), z))
-    
     # generate diffusion (second derivative) operator matrix
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
     Vdiff = Float64[]
     assemble_matrix!(Ne, Nbasis, p,
-                     z, dlb, dlb, one,
+                     z, dlb, dlb, ϕαinterp,
                     I, J, Vdiff)
-    K = sparse(I, J, Vdiff, N, N)
     
     Kϕα = sparse(I, J, Vdiff, N, N)
-
+    
     # generate mass matrix with porosity integrated
     I = Int64[]
     J = Int64[]
@@ -273,14 +282,16 @@ function get_compaction_ops(Ne, N, Nbasis, p, z, ϕ, α)
     
     # compation equation forcing
     Fϕα = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, lb, one, one, Fϕα)
+    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
 
     return Kϕα, Mϕ, Fϕα, ϕαinterp
     
 end
 
-function get_porosity_ops(Ne, N, Nbasis, p, z, u, a, Pc)
+function get_porosity_ops(Ne, Nbasis, p, z, u, a, Pc)
 
+    N = p*Ne + 1
+    
     Pcinterp = Val -> expansion(Val, p, Pc, z)
     
     # generate lumped mass matrix 
@@ -296,11 +307,9 @@ function get_porosity_ops(Ne, N, Nbasis, p, z, u, a, Pc)
     for nz = 1:length(I)
         diag[I[nz]] += Vmass[nz]
     end
-    
     for i = 1:N
         diag[i] = 1/diag[i]
     end
-    
     Mlump = spdiagm(0 => diag)
 
     # generate mass with Pc matrix 
@@ -330,3 +339,90 @@ function get_porosity_ops(Ne, N, Nbasis, p, z, u, a, Pc)
     return Mlump, Mpc, S, F
     
 end
+
+function get_enth_ops(Ne, Nbasis, p, z, u, a, Pc)
+
+    Pcinterp = Val -> expansion(Val, p, Pc, z)
+    N = p*Ne + 1
+    
+    # generate lumped mass matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, lb,
+                     one,
+                     I, J, Vmass)
+    
+    for nz = 1:length(I)
+        diag[I[nz]] += Vmass[nz]
+    end
+    for i = 1:N
+        diag[i] = 1/diag[i]
+    end
+    Mlump = spdiagm(0 => diag)
+
+    # generate diffusion (second derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vdiff = Float64[]
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, dlb, dlb, one,
+                     I, J, Vdiff)
+
+    K = sparse(I, J, Vdiff, N, N)
+
+    # generate advective (first derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vadv = Float64[]
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, dlb, u,
+                     I, J, Vadv)
+    S = sparse(I, J, Vadv, N, N)
+    
+    # generate mass with Pc matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, lb,
+                     Pcinterp,
+                     I, J, Vmass)
+    Mpc = sparse(I, J, Vmass, N, N)
+
+    # melting source term
+    F = zeros(N)
+    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
+
+    return K, S, Mpc, Mlump, F
+    
+end
+
+
+#=
+function restrict_cold(Ne, N, Nbasis, p, z, u)
+    
+    N = size(M)[1]
+
+    Mn = M[1, :]
+    Kn = K[1, :]
+    Sn = S[1, :]
+    Fn = F[1]
+    
+    M = M[Nt + 1:end,Nt + 1:end]
+    K = K[Nt + 1:end,Nt + 1:end]
+    S = S[Nt + 1:end,Nt + 1:end]
+    F = F[Nt + 1:end]
+
+    
+    M[1, :] = Mn[1 : N - Nt]
+    K[1, :] = Kn[1 : N - Nt]
+    S[1, :] = Sn[1 : N - Nt]
+    F[1] = Fn
+    
+    return M, K, S, F 
+end
+=#
