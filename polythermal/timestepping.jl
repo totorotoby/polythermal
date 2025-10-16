@@ -3,8 +3,6 @@ using Arpack
 include("assemble.jl")
 include("sol_tests.jl")
 
-
-
 function timestep(T, ϕ, Pc, Γ, params, Δt)
 
     N = params.N
@@ -37,7 +35,6 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     A = M + Δt/2 .* (K + S)
     # forcing term can be replaced with 2 time slices if variable (evolving velocity field)
     R = (M - Δt/2 .* (K + S)) * T[Nt:end, 2] + Δt/2 .* (F + F)
-    # this is redundent computation after the first timestep...
     enforce_dirchlet!(A, R, Tsurf, 1)
     enforce_dirchlet!(A, R, 0, 0)
     
@@ -71,7 +68,7 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     plot(ϕ[1:Nt, 1], z[1:Nt], label="ϕ")
     plot!(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(T[:,1], z, label="T"))
-    #3sleep(.05)
+    #sleep(.05)
     # re-partition
     return (partition_temp_cold(T[:, 1], p, z), ϕ, T, Pc)
     

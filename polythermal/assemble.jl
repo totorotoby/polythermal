@@ -257,8 +257,6 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     ϕinterp = Val -> expansion(Val, p, ϕ, z)
     ϕαinterp = Val -> expansion(Val, p, ϕ.^α, z)
 
-    #display(plot(ϕαinterp.(z), z))
-    # generate diffusion (second derivative) operator matrix
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -400,29 +398,3 @@ function get_enth_ops(Ne, Nbasis, p, z, u, a, Pc)
     return K, S, Mpc, Mlump, F
     
 end
-
-
-#=
-function restrict_cold(Ne, N, Nbasis, p, z, u)
-    
-    N = size(M)[1]
-
-    Mn = M[1, :]
-    Kn = K[1, :]
-    Sn = S[1, :]
-    Fn = F[1]
-    
-    M = M[Nt + 1:end,Nt + 1:end]
-    K = K[Nt + 1:end,Nt + 1:end]
-    S = S[Nt + 1:end,Nt + 1:end]
-    F = F[Nt + 1:end]
-
-    
-    M[1, :] = Mn[1 : N - Nt]
-    K[1, :] = Kn[1 : N - Nt]
-    S[1, :] = Sn[1 : N - Nt]
-    F[1] = Fn
-    
-    return M, K, S, F 
-end
-=#
