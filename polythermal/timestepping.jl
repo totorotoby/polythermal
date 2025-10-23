@@ -81,8 +81,8 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
            Mpc = Mpc,
            Ftemp)
 
-    ϕ[1:Nt, 1] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
-    ϕ[1:Nt, 2] = ϕ[1:Nt, 1]
+    ϕ[1:Nt] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
+
     
     plot(ϕ[1:Nt, 1], z[1:Nt], label="ϕ")
     plot!(Pc[1:Nt], z[1:Nt], label="Pc")
@@ -111,15 +111,15 @@ function RK4(u, Δt, params, rhs)
 
     Nt = params.Nt
     
-    k1 = Δt * rhs(u[:, 2], params)
-    k2 = Δt * rhs(u[:, 2] + k1/2, params)
-    k3 = Δt * rhs(u[:, 2] + k2/2, params)
-    k4 = Δt * rhs(u[:, 2] + k3, params)
+    k1 = Δt * rhs(u[:], params)
+    k2 = Δt * rhs(u[:] + k1/2, params)
+    k3 = Δt * rhs(u[:] + k2/2, params)
+    k4 = Δt * rhs(u[:] + k3, params)
 
-    u_raw = u[1:Nt, 2] + (k1 + 2k2 + 2k3 + k4) / 6
+    u_raw = u[:] + (k1 + 2k2 + 2k3 + k4) / 6
     u_smooth = Smoothing.binomial(u_raw, 1)
 
-    return u_smooth
+    return u_raw
     
 end
 
