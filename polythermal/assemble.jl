@@ -344,7 +344,7 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     Pcinterp = Val -> expansion(Val, p, Pc, z)
     Γc = Ne - Γ
-    Nc = N - Nt
+    Nc = N - (Nt - 1)
     
     # generate lumped mass matrix 
     I = Int64[]
@@ -398,6 +398,6 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
-    return K, S, Mpc, M, Mlump, F
+    return K, S, Mpc, Mlump, F
     
 end

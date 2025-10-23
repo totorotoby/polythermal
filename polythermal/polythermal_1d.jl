@@ -74,9 +74,9 @@ let
     T[:, 2] = initial_temp.(z)
 
     # initial porosity    
-     ϕ = zeros(N, 2)
-     ϕ[:, 1] = initial_pore.(z)
-     ϕ[:, 2] = initial_pore.(z)
+     ϕ = zeros(N)
+     ϕ[:] = initial_pore.(z)
+
 
     # compaction pressure
     Pc = zeros(N)

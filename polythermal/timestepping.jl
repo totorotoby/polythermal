@@ -25,7 +25,6 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
 
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
-    Nc = N - Nt
 
     #---- compaction pressure solve ----#
     Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
@@ -38,7 +37,9 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
 
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
-    
+
+    #--- solve for ethalpy ---#
+    K, S, Mpc, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     
     #---- Set up domains to solve on by partitioning ----#
@@ -80,7 +81,8 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
            Mpc = Mpc,
            Ftemp)
 
-    RK4!(ϕ, Δt, ops)
+    ϕ[1:Nt, 1] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
+    ϕ[1:Nt, 2] = ϕ[1:Nt, 1]
     
     plot(ϕ[1:Nt, 1], z[1:Nt], label="ϕ")
     plot!(Pc[1:Nt], z[1:Nt], label="Pc")
@@ -105,19 +107,19 @@ function porosity_rhs(ϕ, params)
 
 end
 
-function RK4!(ϕ, Δt, params)
+function RK4(u, Δt, params, rhs)
 
     Nt = params.Nt
     
-    k1 = Δt * porosity_rhs(ϕ[1:Nt, 2], params)
-    k2 = Δt * porosity_rhs(ϕ[1:Nt, 2] + k1/2, params)
-    k3 = Δt * porosity_rhs(ϕ[1:Nt, 2] + k2/2, params)
-    k4 = Δt * porosity_rhs(ϕ[1:Nt, 2] + k3, params)
+    k1 = Δt * rhs(u[:, 2], params)
+    k2 = Δt * rhs(u[:, 2] + k1/2, params)
+    k3 = Δt * rhs(u[:, 2] + k2/2, params)
+    k4 = Δt * rhs(u[:, 2] + k3, params)
 
-    ϕ_raw = ϕ[1:Nt, 2] + (k1 + 2k2 + 2k3 + k4) / 6
-    ϕ_smooth = Smoothing.binomial(ϕ_raw, 1)
-    ϕ[1:Nt, 1] .= ϕ_smooth
-    ϕ[1:Nt, 2] .= ϕ[1:Nt, 1]
+    u_raw = u[1:Nt, 2] + (k1 + 2k2 + 2k3 + k4) / 6
+    u_smooth = Smoothing.binomial(u_raw, 1)
+
+    return u_smooth
     
 end
 
