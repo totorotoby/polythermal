@@ -340,3 +340,64 @@ function get_porosity_ops(Ne, Nbasis, p, z, u, a, Pc)
     
 end
 
+function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
+
+    Pcinterp = Val -> expansion(Val, p, Pc, z)
+    Γc = Ne - Γ
+    Nc = N - Nt
+    
+    # generate lumped mass matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, lb,
+                     one,
+                     I, J, Vmass)
+    
+    for nz = 1:length(I)
+        diag[I[nz]] += Vmass[nz]
+    end
+    for i = 1:N
+        diag[i] = 1/diag[i]
+    end
+    Mlump = spdiagm(0 => diag)
+
+    # generate diffusion (second derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vdiff = Float64[]
+    assemble_matrix!(Γc, Nbasis, p,
+                     z, dlb, dlb, one,
+                     I, J, Vdiff)
+
+    K = sparse(I, J, Vdiff, Nc, Nc)
+    
+    # generate advective (first derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vadv = Float64[]
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, dlb, u,
+                     I, J, Vadv)
+    S = sparse(I, J, Vadv, N, N)
+    
+    # generate mass with Pc matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Γ, Nbasis, p,
+                     z, lb, lb,
+                     Pcinterp,
+                     I, J, Vmass)
+    Mpc = sparse(I, J, Vmass, Nt, Nt)
+
+    # melting source term
+    F = zeros(N)
+    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
+
+    return K, S, Mpc, M, Mlump, F
+    
+end

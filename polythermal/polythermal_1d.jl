@@ -66,14 +66,8 @@ let
     Pcbase = 1.0
     
     # initial enthalpy
-    #H = zeros(N, 2)
-    #H[:, 2] = initial_enth.(z)
-
-    #T = get_temp(H[:, 2], 0)
-    #ϕ = get_porosity(H[:, 2], 0)
-
-    #plot(T, z, label='T')
-    #display(plot!(ϕ, z, label='ϕ'))
+    H = zeros(N, 2)
+    H[:, 2] = initial_enth.(z)
 
     # initial temperature data
     T = zeros(N, 2)
@@ -84,27 +78,9 @@ let
      ϕ[:, 1] = initial_pore.(z)
      ϕ[:, 2] = initial_pore.(z)
 
-    #display(plot(ϕ[:,1], z))
-
     # compaction pressure
     Pc = zeros(N)
 
-    #---- Solution sequence ----#
-    #=
-    # cold steady state test
-    F = F
-    A = K
-    enforce_dirchlet!(A, F, Tsurf, 1)
-    display(K)
-    display(F)
-    T[:,1] .= A\F
-    T_sol = cold_steady_test.(z)
-    error = sqrt(sum((T[:,1] - T_sol).^2))
-    @show error
-    plot(T[:,1], z)
-    display(plot!(cold_steady_test.(z), z))
-    =#
-    
     # advective cfl
     Δt = h/abs(u(1))
 

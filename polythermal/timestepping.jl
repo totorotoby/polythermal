@@ -27,6 +27,20 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     Nt = Γ_nodes[end]
     Nc = N - Nt
 
+    #---- compaction pressure solve ----#
+    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
+                                                       p + 1, p, z,
+                                                       ϕ, α)
+    
+    A = -κ * δ .* Kcomp - 1/η .* Mcomp
+    R = κ * g .* Fcomp
+    enforce_dirchlet!(A, R, Pcbase, 0)
+
+    # sovle BVP for compation pressure
+    Pc[1:Nt] .= A\R
+    
+
+    
     #---- Set up domains to solve on by partitioning ----#
     # TODO: this is probably pretty memory inefficent and should be done with views, and rescaling of matrices
     #---- get cold operators ----#
