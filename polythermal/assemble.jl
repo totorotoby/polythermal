@@ -344,8 +344,7 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     Pcinterp = Val -> expansion(Val, p, Pc, z)
     Γc = Ne - Γ
-    Nc = N - (Nt - 1)
-    
+        
     # generate lumped mass matrix 
     I = Int64[]
     J = Int64[]
@@ -364,16 +363,6 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     end
     Mlump = spdiagm(0 => diag)
 
-    # generate diffusion (second derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vdiff = Float64[]
-    assemble_matrix!(Γc, Nbasis, p,
-                     z, dlb, dlb, one,
-                     I, J, Vdiff)
-
-    K = sparse(I, J, Vdiff, Nc, Nc)
-    
     # generate advective (first derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -382,6 +371,20 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
                      z, lb, dlb, u,
                      I, J, Vadv)
     S = sparse(I, J, Vadv, N, N)
+
+
+    # generate diffusion (second derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vdiff = Float64[]
+    assemble_matrix!(Γc, Nbasis, p,
+                     z, dlb, dlb, one,
+                     I, J, Vdiff)
+
+    I = I .+ (Nt - 1)
+    J = J .+ (Nt - 1)
+
+    K = sparse(I, J, Vdiff, N, N)
     
     # generate mass with Pc matrix 
     I = Int64[]
@@ -392,12 +395,14 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
                      z, lb, lb,
                      Pcinterp,
                      I, J, Vmass)
-    Mpc = sparse(I, J, Vmass, Nt, Nt)
+    Mpc = sparse(I, J, Vmass, N, N)
+    
+    Q = Mpc + K
 
     # melting source term
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
-    return K, S, Mpc, Mlump, F
+    return Q, S, Mlump, F
     
 end

@@ -66,8 +66,8 @@ let
     Pcbase = 1.0
     
     # initial enthalpy
-    H = zeros(N, 2)
-    H[:, 2] = initial_enth.(z)
+    H = zeros(N)
+    H[:] = initial_enth.(z)
 
     # initial temperature data
     T = zeros(N, 2)
@@ -82,7 +82,7 @@ let
     Pc = zeros(N)
 
     # advective cfl
-    Δt = h/abs(u(1))
+    Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
     # get divide index
     Γ = partition_temp_cold(T[:,2], p, z)
@@ -108,10 +108,19 @@ let
               g = g,
               κ = κ)
     
-    for i = 1:200
-        (Γ, ϕ, T, Pc) = timestep(T, ϕ, Pc, Γ, params, Δt)
+    for i = 1:100000
+        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 
+    Γ_nodes = EToN(Γ, p)
+    Nt = Γ_nodes[end]
+    
+    plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    plot!(Pc[1:Nt], z[1:Nt], label="Pc")
+    plot!(H[:], z, label="H")
+    display(plot!(T[:,1], z, label="T"))
+
+    
     nothing
      
 end

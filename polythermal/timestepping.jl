@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(T, ϕ, Pc, Γ, params, Δt)
+function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -39,8 +39,16 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     Pc[1:Nt] .= A\R
 
     #--- solve for ethalpy ---#
-    K, S, Mpc, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
+    Q, S, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
+    ops = (Nt = Nt,
+           Q = Q,
+           S = S,
+           Mlump = Mlump,
+           F = F,
+           Tsurf = Tsurf)
+
+    H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     
     #---- Set up domains to solve on by partitioning ----#
     # TODO: this is probably pretty memory inefficent and should be done with views, and rescaling of matrices
@@ -59,7 +67,8 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
     # solve for next temperature
     T[Nt:end,1] .= A\R
     T[:, 2] .= T[:,1]
-    
+
+    #=
     #---- compaction pressure solve ----#
     Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
                                                        p + 1, p, z,
@@ -71,7 +80,7 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
 
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
-
+    =#
     #---- porosity solve ----#
     Mlump, Mpc, Stemp, Ftemp = get_porosity_ops(Γ, p + 1, p, z[1:Nt], u, a, Pc[1:Nt])
     
@@ -79,33 +88,54 @@ function timestep(T, ϕ, Pc, Γ, params, Δt)
            Mlump = Mlump,
            Stemp = Stemp,
            Mpc = Mpc,
-           Ftemp)
+           Ftemp = Ftemp)
 
     ϕ[1:Nt] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
 
     
-    plot(ϕ[1:Nt, 1], z[1:Nt], label="ϕ")
-    plot!(Pc[1:Nt], z[1:Nt], label="Pc")
-    display(plot!(T[:,1], z, label="T"))
+    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    #plot!(Pc[1:Nt], z[1:Nt], label="Pc")
+    #plot!(H[:], z, label="H")
+    #display(plot!(T[:,1], z, label="T"))
     #3sleep(.05)
     # re-partition
-    return (partition_temp_cold(T[:, 1], p, z), ϕ, T, Pc)
+    return (partition_temp_cold(T[:, 1], p, z), H, T, ϕ, Pc)
     
 end
 
 function porosity_rhs(ϕ, params)
 
+    Nt = params.Nt
     Mlump = params.Mlump
     Stemp = params.Stemp
     Mpc = params.Mpc
     Ftemp = params.Ftemp
-    
+
     # TODO: really need Pe_inv * Mpc but coded myself into a hole
     RHS = Mlump * ((-Stemp - Mpc) * ϕ + Ftemp)
     RHS[end] = 0.0
     return RHS
 
 end
+
+function enthalpy_rhs(h, params)
+
+    Nt = params.Nt
+    Q = params.Q
+    S = params.S
+    Mlump = params.Mlump
+    F = params.F
+    Tsurf = params.Tsurf
+    
+    # advection
+    RHS = Mlump * (-S * h - Q * h + F)
+    RHS[end] = Tsurf
+    RHS[Nt] = 0.0
+    
+    return RHS
+    
+end
+
 
 function RK4(u, Δt, params, rhs)
 
