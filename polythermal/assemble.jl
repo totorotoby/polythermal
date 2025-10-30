@@ -115,17 +115,15 @@ function inCOO(I, J, i, j)
     return -1
 end
 
-function enforce_dirchlet!(A, F, v, side)
-
-    if side == 0 
-        A[1, 1] = 1.0
-        A[1, 2:end] .= 0
-        F[1] = v
-    else
-        A[end, end] = 1.0
-        A[end, 1:(end-1)] .= 0.0
-        F[end] = v
+function enforce_dirchlet!(A, F, v, index)
+    A[index, index] = 1.0
+    if index != 1
+        A[index, 1:index-1] .= 0
     end
+    if index != size(A)[2]
+        A[index, index+1:end] .= 0
+    end
+    F[index] = v
 end
 
 #---- Barycentric lagragian interpolation ----#
@@ -344,7 +342,17 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     Pcinterp = Val -> expansion(Val, p, Pc, z)
     Γc = Ne - Γ
-        
+
+    # generate mass operator matrix (no derivatives)
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, lb, one,
+                     I, J, Vmass)
+    M = sparse(I, J, Vmass, N, N)
+
+    
     # generate lumped mass matrix 
     I = Int64[]
     J = Int64[]
@@ -403,6 +411,6 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
-    return Q, S, Mlump, F
+    return Q, S, M, Mlump, F
     
 end

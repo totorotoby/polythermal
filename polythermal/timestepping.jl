@@ -33,14 +33,21 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     
     A = -κ * δ .* Kcomp - 1/η .* Mcomp
     R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 0)
+    enforce_dirchlet!(A, R, Pcbase, 1)
 
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
 
     #--- solve for ethalpy ---#
-    Q, S, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
+    Q, S, M Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
+
+    
+    
+
+    
+    # explicit (and stiff) solve
+    #= 
     ops = (Nt = Nt,
            Q = Q,
            S = S,
@@ -49,9 +56,10 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
            Tsurf = Tsurf)
 
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-    
+    =#
     #---- Set up domains to solve on by partitioning ----#
-    # TODO: this is probably pretty memory inefficent and should be done with views, and rescaling of matrices
+    # TODO: this is probably pretty memory inefficent and
+    # should be done with views, and rescaling of matrices
     #---- get cold operators ----#
     (K, S, M, F) = get_temperature_ops(Ne - Γ, Nbasis,
                                        p, z, u, a, α)
@@ -61,8 +69,8 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     # forcing term can be replaced with 2 time slices if variable (evolving velocity field)
     R = (M - Δt/2 .* (K + S)) * T[Nt:end, 2] + Δt/2 .* (F + F)
     # this is redundent computation after the first timestep...
-    enforce_dirchlet!(A, R, Tsurf, 1)
-    enforce_dirchlet!(A, R, 0, 0)
+    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+    enforce_dirchlet!(A, R, 0, 1)
     
     # solve for next temperature
     T[Nt:end,1] .= A\R
@@ -118,6 +126,9 @@ function porosity_rhs(ϕ, params)
 
 end
 
+
+
+#explict timestepping for enthalpy method
 function enthalpy_rhs(h, params)
 
     Nt = params.Nt
@@ -126,10 +137,10 @@ function enthalpy_rhs(h, params)
     Mlump = params.Mlump
     F = params.F
     Tsurf = params.Tsurf
-    
-    # advection
-    RHS = Mlump * (-S * h - Q * h + F)
-    RHS[end] = Tsurf
+    A = Mlump * (- S - Q)
+    #enforce_dirchlet!(A, F, 0, size(A)[1])
+    RHS = A * h + Mlump * F
+    RHS[end] = 0.0
     RHS[Nt] = 0.0
     
     return RHS
@@ -138,7 +149,6 @@ end
 
 
 function RK4(u, Δt, params, rhs)
-
     Nt = params.Nt
     
     k1 = Δt * rhs(u[:], params)
@@ -164,3 +174,6 @@ function partition_temp_cold(T, p, z)
 end
 
 
+function picard(H, Δt, ops)
+
+end

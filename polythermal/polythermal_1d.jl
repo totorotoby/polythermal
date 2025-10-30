@@ -1,5 +1,6 @@
 using Printf
 using Plots
+using DelimitedFiles
 
 include("assemble.jl")
 include("timestepping.jl")
@@ -15,8 +16,6 @@ let
     initial_enth(z) = z > .5 ? Hsurf * s.((z - .5) / .5) : -.1 * (z - .5)
     initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
     initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
-
-
 
     
     #---- physical parameters ----#
@@ -41,7 +40,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 128
+    Ne = 32
     # basis order
     p = 2
     # number of nodes
@@ -86,7 +85,7 @@ let
 
     # get divide index
     Γ = partition_temp_cold(T[:,2], p, z)
-    
+    Γ
 
     #display(Γ_node)
     #plot(T[:,2], z)
@@ -108,18 +107,21 @@ let
               g = g,
               κ = κ)
     
-    for i = 1:100000
+    for i = 1:5000
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
+
+    writedlm("H.end", H, ',')
     
     plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     plot!(Pc[1:Nt], z[1:Nt], label="Pc")
     plot!(H[:], z, label="H")
     display(plot!(T[:,1], z, label="T"))
-
+    @show H[end] - T[end,1]
+    
     
     nothing
      
