@@ -38,16 +38,25 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
 
+    
     #--- solve for ethalpy ---#
-    Q, S, M Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
-
+    Q, S, M, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     
+    ops = (Δt = Δt,
+           F = F,
+           M = M,
+           Q = Q,
+           S = S,
+           z = z,
+           Tsurf = Tsurf,
+           Nt = Nt)
     
-
+    # picard iterations
+    picard!(H, ops, .0001, 3)
     
     # explicit (and stiff) solve
-    #= 
+    #=
     ops = (Nt = Nt,
            Q = Q,
            S = S,
@@ -57,10 +66,12 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
+    
     #---- Set up domains to solve on by partitioning ----#
     # TODO: this is probably pretty memory inefficent and
     # should be done with views, and rescaling of matrices
     #---- get cold operators ----#
+
     (K, S, M, F) = get_temperature_ops(Ne - Γ, Nbasis,
                                        p, z, u, a, α)
     #---- Temperature solve ----#
@@ -100,14 +111,16 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     ϕ[1:Nt] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
 
-    
-    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    #plot!(Pc[1:Nt], z[1:Nt], label="Pc")
-    #plot!(H[:], z, label="H")
-    #display(plot!(T[:,1], z, label="T"))
-    #3sleep(.05)
+
+    plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    plot!(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
+    display(plot!(T[:,1], z, label="T"))
+    sleep(.05)
     # re-partition
-    return (partition_temp_cold(T[:, 1], p, z), H, T, ϕ, Pc)
+    T_temp = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T_temp, p, z)
+    return (Γ, H, T, ϕ, Pc)
     
 end
 
@@ -174,6 +187,30 @@ function partition_temp_cold(T, p, z)
 end
 
 
-function picard(H, Δt, ops)
+function picard!(H, ops, tol, maxiter)
 
+    Δt = ops.Δt
+    S = ops.S
+    M = ops.M
+    Q = ops.Q
+    F = ops.F
+    z = ops.z
+    Tsurf = ops.Tsurf
+    Nt = ops.Nt
+
+    Hprev = copy(H)
+    
+    A = (M + Δt/2 .* (S + Q))
+    R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
+    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+    enforce_dirchlet!(A, R, 0.0, Nt)
+    
+    H[:] .= A\R
+
+    iter = 0
+
+    #while sum((H - Hprev).^2) > tol && iter < maxiter
+    #end
+         
+    
 end

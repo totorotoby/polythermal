@@ -81,11 +81,11 @@ let
     Pc = zeros(N)
 
     # advective cfl
-    Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
+    Δt = h/abs(u(1))
+    #Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
     # get divide index
     Γ = partition_temp_cold(T[:,2], p, z)
-    Γ
 
     #display(Γ_node)
     #plot(T[:,2], z)
@@ -106,21 +106,22 @@ let
               η = η,
               g = g,
               κ = κ)
+
     
-    for i = 1:5000
+    @time for i = 1:200
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
 
-    writedlm("H.end", H, ',')
+    #writedlm("H.end", H, ',')
     
-    plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    plot!(Pc[1:Nt], z[1:Nt], label="Pc")
-    plot!(H[:], z, label="H")
-    display(plot!(T[:,1], z, label="T"))
-    @show H[end] - T[end,1]
+    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    #display(plot!(H[:], z, label="H"))
+    #display(plot!(T[:,1], z, label="T"))
+    
     
     
     nothing

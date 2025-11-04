@@ -389,9 +389,10 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
                      z, dlb, dlb, one,
                      I, J, Vdiff)
 
+    # this is tricky, its just moving the indices to the cold region,
+    # but we generated with indices starting at 0 in temperate region
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
-
     K = sparse(I, J, Vdiff, N, N)
     
     # generate mass with Pc matrix 
