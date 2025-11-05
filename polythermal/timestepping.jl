@@ -27,6 +27,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     Nt = Γ_nodes[end]
 
     #---- compaction pressure solve ----#
+    ϕ = get_porosity(H, 0.0)
     Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
                                                        p + 1, p, z,
                                                        ϕ, α)
@@ -71,7 +72,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     # TODO: this is probably pretty memory inefficent and
     # should be done with views, and rescaling of matrices
     #---- get cold operators ----#
-
+    #=
     (K, S, M, F) = get_temperature_ops(Ne - Γ, Nbasis,
                                        p, z, u, a, α)
     #---- Temperature solve ----#
@@ -86,7 +87,8 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     # solve for next temperature
     T[Nt:end,1] .= A\R
     T[:, 2] .= T[:,1]
-
+    =#
+    
     #=
     #---- compaction pressure solve ----#
     Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
@@ -101,6 +103,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
     Pc[1:Nt] .= A\R
     =#
     #---- porosity solve ----#
+    #=
     Mlump, Mpc, Stemp, Ftemp = get_porosity_ops(Γ, p + 1, p, z[1:Nt], u, a, Pc[1:Nt])
     
     ops = (Nt = Nt,
@@ -110,12 +113,12 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
            Ftemp = Ftemp)
 
     ϕ[1:Nt] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
+    =#
 
-
-    plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    plot!(Pc[1:Nt], z[1:Nt], label="Pc")
+    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(H[:], z, label="H"))
-    display(plot!(T[:,1], z, label="T"))
+    #display(plot!(T[:,1], z, label="T"))
     sleep(.05)
     # re-partition
     T_temp = get_temp(H, 0.0)

@@ -33,6 +33,7 @@
 \usepackage{setspace}
 \usepackage{natbib}
 \usepackage{cancel}
+\usepackage{mathtools}
 
 
 %\doublespacing
@@ -114,7 +115,10 @@ Now plugging this into \eqref{eq:water-mass-balance}, and using \eqref{eq:conser
 
 \begin{align*}
   &\pd{\phi}{t} + \nabla \cdot [\phi u] + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
+  &\pd{\phi}{t} + \nabla \phi u + \phi(\nabla \cdot u) + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} & (\text{now taking incompressability}) \\
+  &\pd{\phi}{t} + u \nabla \phi + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
 \end{align*}
+
 
 Plugging this same relationship into darcy's law and replacing $p_w$ with $p - p_e$ gives:
 
@@ -127,10 +131,10 @@ where from scaling arguments $\nabla p_r$ can be ignored. All together the tempe
 
 \begin{align*}
   &\frac{p_e\phi}{\eta} = \nabla \cdot (\kappa\phi^\alpha((\rho_w - \rho) g + \nabla p_e))\\
-  &\pd{\phi}{t} + \nabla \cdot [\phi u] + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
+  &\pd{\phi}{t} + u \nabla \phi + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
 \end{align*}
 
-below are the one versions with constant velocity.
+below are the 1D versions.
 
 \section{1D - 3 equation system}
 
@@ -232,6 +236,19 @@ Since diffusion only occurs in the cold domain, and porosity only effects the te
   &p_e(0,t) = N_0\\
   &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
 \end{align*}
+
+This can be compared to Ashwanden (2012) which is:
+
+\begin{align*}
+  &\pd{h}{t} - \pd{Q}{z} = a\\
+  &Q = \begin{rcases}
+    \begin{dcases}
+      k_i(h), &h < h_{melt}\\
+      k_0, & h \geq h_{melt}
+    \end{dcases}
+    \end{rcases} \pd{h}{z}
+\end{align*}
+
 
 
 \section{Solution Methods}

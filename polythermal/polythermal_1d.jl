@@ -40,7 +40,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 32
+    Ne = 64
     # basis order
     p = 2
     # number of nodes
@@ -108,7 +108,7 @@ let
               κ = κ)
 
     
-    @time for i = 1:200
+    for i = 1:250
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 
