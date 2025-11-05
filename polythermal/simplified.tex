@@ -32,6 +32,8 @@
 \usepackage{tipa}
 \usepackage{setspace}
 \usepackage{natbib}
+\usepackage{cancel}
+
 
 %\doublespacing
 \newcommand{\bs}[1]{\boldsymbol{#1}}
@@ -54,16 +56,92 @@
 \maketitle
 \vspace{-1cm}
 
+\section{Equation Derivations}
+
+Assume that the temperate ice is a mixture of ice with density $\rho_i$ and velocity $u$, and water with volume fraction $\phi$, density $\rho_w$ and velocity $u_w = u + u_l$ where $u_l$ is the additional velocity of the water beyond the ice. Lastly assume that ice will melt at a ratet $m$ and turn directly into water. Then, conservation of mass for both ice and water give:
+
+\begin{align*}
+  &\frac{D(\rho_i(1 - \phi))}{Dt} = -m & (\text{ice mass balanace})\\
+  &\rho_i\frac{D((1 - \phi))}{Dt} = -m \\
+  &\pd{(1 - \phi)}{t} + \nabla \cdot[(1-\phi)u] = -\frac{m}{\rho_i} \tag{1} \label{eq:ice-mass-balance}\\
+  &\frac{D\rho_w\phi}{Dt} = m & (\text{water mass balance})\\
+  &\pd{\phi}{t} + \nabla \cdot [\phi(u + u_l)] = \frac{m}{\rho_w} & (\text{define } j = \phi u_l)\\
+  &\pd{\phi}{t} + \nabla \cdot [\phi u + j] = \frac{m}{\rho_w} \tag{2} \label{eq:water-mass-balance} \\
+\end{align*}
+
+Because there is melting latent heat $L$ is being absorbed, and similar to cold ice energy is being produced by viscous dissipation $a$, because the temperature in the temperate region is by defintion $T_m$, a constant, overall conservation of energy gives:
+
+\begin{align*}
+  \cancel{\text{Temperature terms}}= a - Lm \rightarrow m = \frac{a}{L} \tag{3} \label{eq:conservation-of-energy}
+\end{align*}
+
+The flux of liquid water $j$ follows darcy's law (assume the viscous resistive force is linear to velocity in stokes equation):
+
+\begin{align*}
+  j = \Pi(\phi)(\rho_w g - \nabla p_w) =  \kappa\phi^\alpha(\rho_w g - \nabla p_w)\tag{4} \label{eq:darcys-law}
+\end{align*}
+Where the hydraulic conductivity follows $\Pi(\phi) =\kappa \phi^\alpha$, a Kozeny–Carman relation, and $\kappa$ is the conductivity.
+
+Since the ice matrix is no-longer incompressable it exerts a compaction pressure $p_e$, where the total pressure is $p = p_e + p_w$, and:
+
+\begin{align*}
+  p_e = - \zeta (\nabla \cdot u) \tag{5} \label{eq:compaction-pressure}
+\end{align*}
+
+where $\zeta = \frac{\eta}{\phi}$ is the bulk viscosity of ice, and $\eta$ is the viscosity of ice.
+
+
+using mass conversation, energy conservation, darcy's law and the compaction pressure relation, we can derive the equations below. Adding \eqref{eq:ice-mass-balance}, to \eqref{eq:water-mass-balance} gives:
+
+\begin{align*}
+  &\nabla \cdot (u - \phi u) + \nabla \cdot(\phi u + j) = \frac{m}{\rho_w} - \frac{m}{\rho_i}\\
+  &\nabla \cdot u + \nabla \cdot j = \frac{\rho_i - \rho_w}{\rho_w\rho_i}m \tag{6} \label{eq:sum-mass-conservation}\\
+\end{align*}
+
+Now taking a boussinesq approximation so that $\rho_w = \rho_i$, \eqref{eq:sum-mass-conservation} gives:
+
+\begin{align*}
+  \nabla \cdot j = - \nabla \cdot u
+\end{align*}
+
+plugging in \eqref{eq:compaction-pressure} gives:
+
+\begin{align*}
+  \nabla \cdot j = \frac{p_e\phi}{\eta}
+\end{align*}
+
+Now plugging this into \eqref{eq:water-mass-balance}, and using \eqref{eq:conservation-of-energy} gives:
+
+\begin{align*}
+  &\pd{\phi}{t} + \nabla \cdot [\phi u] + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
+\end{align*}
+
+Plugging this same relationship into darcy's law and replacing $p_w$ with $p - p_e$ gives:
+
+\begin{align*}
+  &\frac{p_e\phi}{\eta} = \nabla \cdot (\kappa\phi^\alpha(\rho_w g - \nabla (p - p_e))) & (\text{substituting } \nabla p = \rho g + \nabla p_r)\\
+  &\frac{p_e\phi}{\eta} = \nabla \cdot (\kappa\phi^\alpha((\rho_w - \rho) g + \nabla p_r + \nabla p_e))\\
+\end{align*}
+
+where from scaling arguments $\nabla p_r$ can be ignored. All together the temperate equations are then:
+
+\begin{align*}
+  &\frac{p_e\phi}{\eta} = \nabla \cdot (\kappa\phi^\alpha((\rho_w - \rho) g + \nabla p_e))\\
+  &\pd{\phi}{t} + \nabla \cdot [\phi u] + \frac{p_e\phi}{\eta} = \frac{a}{\rho L} \\
+\end{align*}
+
+below are the one versions with constant velocity.
+
 \section{1D - 3 equation system}
 
 \subsection{Cold Ice}
 
 \subsubsection{Temperature Equation}
-\begin{align}
-  \rho c \left(\pd{T}{t} + u \pd{T}{z}\right) - \pd{}z\left(K \pd{T}{z}\right) = a \\
-  T(H,t) = T_0\\
+\begin{align*}
+  \rho c \left(\pd{T}{t} + u \pd{T}{z}\right) - \pd{}z\left(k \pd{T}{z}\right) = a \\
+  T(S,t) = T_0\\
   \pd{T(\Gamma,t)}{z} = T(\Gamma,t) = 0
-\end{align}
+\end{align*}
 
 \begin{center}
 \begin{tabular}{ |c|c|c| } 
@@ -89,18 +167,18 @@
 
 \subsubsection{Compaction Pressure ($P_e$) equation}
 
-\begin{align}
-  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta} \label{eq:pe-equation}\\
+\begin{align*}
+  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta}\\
   &p_e(0,t) = N_0\\
   &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
-\end{align}
+\end{align*}
 
 \subsubsection{Porosity ($\phi$) equation}
 
-\begin{align}
+\begin{align*}
   &\pd{\phi}{t} + u\pd{\phi}{z} + \frac{\phi p_e}{\eta} = \frac{a}{\rho L}\\
   &\phi(\Gamma, t) = 0\\
-\end{align}
+\end{align*}
 
 
 \begin{center}
@@ -118,8 +196,6 @@
 
 \section{1D - ethalpy system}
 
-\subsection{ethalpy ($H$) equation}
-
 Define enthalpy as:
 
 \begin{align*}
@@ -129,28 +205,132 @@ Define enthalpy as:
 Then the temperature equation and porosity equation combine to:
 
 \begin{align*}
-\pd{h}{t} + u \pd{h}{z} - \pd{}{z}\left(K \pd{T}{z}\right) + \frac{\phi p_e}{\eta} = a
+\pd{h}{t} + u \pd{h}{z} - \pd{}{z}\left(\frac{k}{\rho c}\pd{T}{z}\right) + \frac{\rho L}{\eta}\phi p_e = a
 \end{align*}
 
-Where $\phi(\Omega_c, 0) = 0$, and $T(\Omega_t, 0) = T_m$, and $\Omega_c$, and $\Omega_T$ are the cold and temeperate regions respectively. And the compaction pressure is still solved for:
-
-\begin{align}
-  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta} \label{eq:pe-equation}\\
-  &p_e(0,t) = N_0\\
-  &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
-\end{align}
-
-\section{general enthalpy system}
-
-For now we assume that the temperate layer is never on the surface:
+Since diffusion only occurs in the cold domain, and porosity only effects the temperate domain this is better written as:
 
 \begin{align*}
   &h = \rho c T + \rho L \phi\\
-  &\pd{h}{t} + u \cdot \nabla h - \nabla \cdot \left(K \nabla T\right) + \frac{\phi p_e}{\eta} = a\\
-  &h(L, t) = T_{surf}\\
+  \\
+  &\text{Enthalpy Equation:}\\
+  &\pd{h}{t} + u \pd{h}{z} + Q(h) = a\\
+  &Q =
+  \begin{cases}
+    - \pd{}{z}\left(k\pd{h}{z}\right), & h < h_{melt}\\
+    \frac{hp_e}{\eta}, & h \geq h_{melt}
+  \end{cases}\\
+  \\
+  &\text{Initial and Boundary Conditions:}\\
+  &h(z, 0) = I(z)\\
+  &h(S, t) = T_{surf}\\
+  &h(\Gamma(t), t) = 0\\
+  \\
+  &\text{Compaction Pressure Equation:}\\
+  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta}\\
+  &\text{Boundary Conditions:}\\
+  &p_e(0,t) = N_0\\
+  &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
 \end{align*}
 
+
+\section{Solution Methods}
+
+\subsection{Spatial Discretization}
+
+using a standard FEM discretization the enthalpy operators are:
+
+\begin{align*}
+  &\text{Enthalpy Operators}:\\
+  \\
+  &\pd{h}{t} \approx \sum_{j=1}^N \int_{\Omega} \psi_i\psi_j dz\pd{\hat{h}_j}{t} = M\pd{\hat{h}}{t}, ~~~ i=1,...N\\
+  \\
+  & u\pd{h}{z} \approx \sum_{j=1}^N\int_{\Omega_T} \psi_iu\pd{\psi_j}{z}dz \hat{h}_j = S\hat{h} , ~~~ i=1,...N\\
+  \\
+  &-\pd{}{z}\left(k\pd{h}{z}\right) \underbrace{\approx}_{\text{IVP gives + sign}} \sum_{j=1}^N\int_{\Omega} \pd{\psi_i}{x}k\pd{\psi_j}{x} dz \hat{h}_j = K_k\hat{h}, ~~~ i = \Gamma_n(\hat{h}),...N\\
+  \\
+  &\frac{hp_e}{\eta} \approx \int_{\Omega} \psi_i \frac{p_e}{\eta}\psi_j dz \hat{h}_j = M_{p_e}\hat{h}, ~~~ i = 1,...\Gamma_n(\hat{h}) \\
+  \\
+  &Q(\hat{h})\hat{h} = \begin{bmatrix}
+    M_{p_e} & 0\\
+    0    & K_k
+    \end{bmatrix} \hat{h}
+  \\
+  \\
+  & a \approx \int_{\Omega} a\psi_i dz = F_a, ~~~ i = 1,...N \\
+  \\
+  &\text{Compaction Pressure Operators}:\\
+  \\
+  &\pd{}{z}(\kappa\phi^\alpha(\rho_w - \rho)g) = \kappa(\rho_w - \rho)g\pd{\phi^\alpha}{z} \approx \kappa(\rho_w - \rho)g \int_\Omega\phi^\alpha\pd{\psi_i}{z} = \kappa\Delta\rho g F_{\phi^\alpha}, ~~~ i=1,...\Gamma_n(\hat{h})\\
+  \\
+  & \kappa\pd{}{z}\left(\phi^\alpha\pd{p_e}{z}\right) \underbrace{\approx}_{\text{IVP gives - sign}} -\sum_{j=1}^N\int_{\Omega} \pd{\psi_i}{x}\kappa(\hat{\phi}_j^\alpha\psi_j)\pd{\psi_j}{x} dz \hat{p}_{e,j} = -\kappa K_{\phi^\alpha}\hat{p}_e , ~~~ i=1,...\Gamma_n(\hat{h})\\
+  \\
+  &\frac{\phi p_e}{\eta} \approx \sum_{j=1}^N\int_{\Omega}\psi_i \frac{(\hat{\phi}_j\psi_j)}{\eta}\psi_j dz \hat{p}_{e,j} = M_{\phi} \hat{p_e} , ~~~ i=1,...\Gamma_n(\hat{h})
+\end{align*}
+
+Where $\Gamma_n$ is the node where the cold/temperate boundary is. With these operators the enthalpy equation becomes:
+
+\begin{align*}
+  M\pd{\hat{h}}{t} + S\hat{h} + Q(\hat{h})\hat{h} - F_a = 0
+\end{align*}
+
+and the compaction pressure equation becomes:
+
+\begin{align*}
+  -(K_{\phi^\alpha} + M_\phi)\hat{p}_e = \kappa\Delta\rho g F_{\phi^\alpha}
+\end{align*}
+
+$p_e$ is a linear solve assuming $\Gamma(\hat{h})$ is known.
+
+\subsection{Timestepping for Enthalpy}
+
+\subsubsection{Explict methods}
+
+Since we have diffusion we are at least limited (assuming forward euler and second order central difference - not what we are doing but maybe representative) (Von Neumann analysis) to: $\Delta  t \leq \frac{\Delta x^2}{2k}$, this just gives:
+
+\begin{align*}
+  \hat{h}^{n+1} = M^{-1}\mathcal{T}(\hat{h}^n)
+\end{align*}
+
+where $\mathcal{T}$ is the operator for any explict timestepping scheme, and $M^{-1}$ is the inverse of a lumped (diagonal) mass matrix so we don't need to solve a linear system. Two major disadvantages to this: stiffness with $\Delta x^2$ scaling, and no treatment of the non-linear $Q(\hat{h})\hat{h}$ term.
+
+\subsection{Operator splitting method}
+
+Taking just the diffusive part first and solve over the entire domain with crank-nicolson noting that $T = T_{melt}$ in the temperate domain for a timestep of $\frac{\Delta t}{2}$:
+
+\begin{align*}
+  &M\frac{2}{\Delta t}\left(\hat{T}^{n + \frac{1}{3}} - \hat{T}^n\right) = \frac{1}{2}\left(-K_k\hat{T}^{n + \frac{1}{3}} - K_k\hat{T}^{n}\right)\\
+  &\hat{T}^{n + \frac{1}{3}} = \left(M + \frac{\Delta t}{4}K_k\right)^{-1}\left(m - \frac{\Delta t}{4}K_k\right) \hat{T}^n\\
+\end{align*}
+
+Then reset enthalpy to be $\hat{h}^{n+\frac{1}{3}} = \hat{\phi}^{n} + \hat{T}^{n+\frac{1}{3}}$, then solve the advective and porosity part explictly for $\Delta T$:
+
+\begin{align*}
+  \hat{h}^{n + \frac{2}{3}} = M_{lump}^{-1}\mathcal{T}(\hat{h}^{n + \frac{1}{3}}, \hat{p}_e^n, \Delta t,S, M_{\phi})
+\end{align*}
+
+Lastly do the source term:
+
+\begin{align*}
+  \hat{h}^{n + 1} = M_{lump}^{-1} \mathcal{T}(\hat{h}^{n + \frac{2}{3}}, F_a)
+\end{align*}
+
+Error analysis for this?
+
+
+\subsection{Picard iterations}
+
+Solve the entire enthalpy system implicitly (Crank–Nicolson), and picard iterate on $\hat{h}$, and $p_e$ so the non-linearity in $Q$ is resolved:
+
+\begin{align*}
+  &\hat{h}^{n+1, k+1} = \left(M + \frac{\Delta t}{2} \left( S + Q(\hat{h}^{n+1, k})\right)\right)^{-1}\left(M - \frac{\Delta t}{2}\left(S + Q(\hat{h}^n\right)\right)\hat{h}^n + \Delta t F_a\\
+  &\hat{p}_e^{k+1} = -((K_{\phi^\alpha} + M_\phi)^k)^{-1}(\kappa\Delta\rho g) F_{\phi^\alpha}^k
+\end{align*}
+
+Where we have to couple the compaction pressure to the iteration as well, because it influances $Q(\hat{h})$.
 
 
 
 \end{document}
+
+
