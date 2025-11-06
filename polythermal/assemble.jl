@@ -59,24 +59,72 @@ function gauss_integrate(element, p, type, funcs...)
 end
 
 
-function assemble_local_tensor(Nbasis, p,
-                               nodes, func1, func2, func3)
 
-    k_e = zeros(Nbasis, Nbasis, Nbasis)
+#=
+Assembles a local over the reference element tensor with ψ_iψ_jψ_k, where ψ is lag or derivative of.
+=#
+function assemble_local_tensor(Nbasis, p,
+                               nodes, func1,
+                               func2, func3)
+
+    k_e = zeros(Nbasis * Nbasis, Nbasis)
     
     for i in 1:Nbasis
         for j in 1:Nbasis
             for k in 1:Nbasis
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), x ->  func3(x, k, nodes))
-                k_e[i, j, k] = v
+                k_e[Nbasis * (i-1) + j, k] = v
             end
         end
     end
+
     return k_e
+    
 end
 
 
+function get_sparsity(Ne, Nbasis, p)
 
+    I = []
+    J = []
+    for e in 1:Ne
+        for i in 1:Nbasis
+            row = (p*e) + (i-p)
+            for j in 1:Nbasis
+                col = (p*e) + (j-p)
+                idx = inCOO(I, J, row, col)
+                if idx == -1
+                    push!(I, row)
+                    push!(J, col)
+                end
+            end
+        end
+    end
+    return I, J
+end
+
+#=
+Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
+where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
+=#
+function assemble_global_from_local_tensor(Ne, nnz, Nbasis, p, g, k_e)
+
+    V = zeros(nnz)
+    for e in 1:Ne
+        idx=EToN(e, p)
+        glocal = g[idx]
+        @show e
+        for i in 1:Nbasis
+            row = (p*e) + (i-p)
+            @show row
+            for j in 1:Nbasis
+                col = (p*e) + (j-p)
+                
+            end
+        end
+    end
+    
+end
 
 #=
 This function assembles a discrete diffusion and advection operators from the basis functions:
@@ -91,7 +139,7 @@ This function assembles a discrete diffusion and advection operators from the ba
     J: non zero column indices
     V: non zero values
 =#
-function assemble_global_matrix_scratch!(Ne, Nbasis, p,
+function assemble_matrix!(Ne, Nbasis, p,
                           x, func1, func2, k,
                           I, J, V)
 
@@ -370,6 +418,8 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, lb, one,
                      I, J, Vmass)
+    @show length(Vmass)
+    error()
     M = sparse(I, J, Vmass, N, N)
 
     
