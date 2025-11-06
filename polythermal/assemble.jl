@@ -261,9 +261,9 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     I = Int64[]
     J = Int64[]
     Vdiff = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, dlb, dlb, ϕαinterp,
-                    I, J, Vdiff)
+    @time assemble_matrix!(Ne, Nbasis, p,
+                           z, dlb, dlb, ϕαinterp,
+                           I, J, Vdiff)
     
     Kϕα = sparse(I, J, Vdiff, N, N)
     
@@ -271,16 +271,16 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     I = Int64[]
     J = Int64[]
     Vmass = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb,
-                     ϕinterp,
-                     I, J, Vmass)
+    @time assemble_matrix!(Ne, Nbasis, p,
+                           z, lb, lb,
+                           ϕinterp,
+                           I, J, Vmass)
     
     Mϕ = sparse(I, J, Vmass, N, N)
     
     # compation equation forcing
     Fϕα = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
+    @time assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
 
     return Kϕα, Mϕ, Fϕα, ϕαinterp
     

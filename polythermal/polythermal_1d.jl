@@ -81,8 +81,8 @@ let
     Pc = zeros(N)
 
     # advective cfl
-    Δt = h/abs(u(1))
-    #Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
+    #Δt = h/abs(u(1))
+    Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
     # get divide index
     Γ = partition_temp_cold(T[:,2], p, z)
@@ -108,7 +108,7 @@ let
               κ = κ)
 
     
-    for i = 1:250
+    for i = 1:1
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
     end
 

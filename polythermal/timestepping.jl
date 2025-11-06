@@ -28,7 +28,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     #---- compaction pressure solve ----#
     ϕ = get_porosity(H, 0.0)
-    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
+    @time Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
                                                        p + 1, p, z,
                                                        ϕ, α)
     
@@ -41,7 +41,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
 
     
     #--- solve for ethalpy ---#
-    Q, S, M, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
+    @time Q, S, M, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     
     ops = (Δt = Δt,
@@ -54,10 +54,9 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
            Nt = Nt)
     
     # picard iterations
-    picard!(H, ops, .0001, 3)
+    #picard!(H, ops, .0001, 3)
     
     # explicit (and stiff) solve
-    #=
     ops = (Nt = Nt,
            Q = Q,
            S = S,
@@ -66,7 +65,6 @@ function timestep(H, T, ϕ, Pc, Γ, params, Δt)
            Tsurf = Tsurf)
 
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-    =#
     
     #---- Set up domains to solve on by partitioning ----#
     # TODO: this is probably pretty memory inefficent and
