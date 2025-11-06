@@ -58,6 +58,26 @@ function gauss_integrate(element, p, type, funcs...)
     return scale *  val
 end
 
+
+function assemble_local_tensor(Nbasis, p,
+                               nodes, func1, func2, func3)
+
+    k_e = zeros(Nbasis, Nbasis, Nbasis)
+    
+    for i in 1:Nbasis
+        for j in 1:Nbasis
+            for k in 1:Nbasis
+                v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), x ->  func3(x, k, nodes))
+                k_e[i, j, k] = v
+            end
+        end
+    end
+    return k_e
+end
+
+
+
+
 #=
 This function assembles a discrete diffusion and advection operators from the basis functions:
     Ne: number of elements
@@ -71,7 +91,7 @@ This function assembles a discrete diffusion and advection operators from the ba
     J: non zero column indices
     V: non zero values
 =#
-function assemble_matrix!(Ne, Nbasis, p,
+function assemble_global_matrix_scratch!(Ne, Nbasis, p,
                           x, func1, func2, k,
                           I, J, V)
 
