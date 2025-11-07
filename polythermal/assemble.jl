@@ -26,6 +26,8 @@ function gauss_integrate(element, p, type, funcs...)
     	            -0.8611363115940526
     	            0.8611363115940526]
 
+    end
+    #=    
     # GLL from second to 5th order
     elseif type == 2
         if p == 1
@@ -46,11 +48,11 @@ function gauss_integrate(element, p, type, funcs...)
                         -0.6546536707079771 1]
         end
     end
+        =#
         
     val = 0.0
     scale = (element[end] - element[1]) * .5
     c = (element[end] + element[1]) * .5
-
     for l in 1:length(weights)
         val += weights[l] * 
             reduce(*, [f(scale * abscissa[l] + c) for f in funcs])
@@ -59,30 +61,23 @@ function gauss_integrate(element, p, type, funcs...)
 end
 
 
-
 #=
 Assembles a local over the reference element tensor with ψ_iψ_jψ_k, where ψ is lag or derivative of.
 =#
-function assemble_local_tensor(Nbasis, p,
-                               nodes, func1,
-                               func2, func3)
-
-    k_e = zeros(Nbasis * Nbasis, Nbasis)
-    
-    for i in 1:Nbasis
-        for j in 1:Nbasis
-            for k in 1:Nbasis
-                v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), x ->  func3(x, k, nodes))
-                # note: I think this right, but it might be transposed...
-                k_e[Nbasis * (j-1) + i, k] = v
-            end
-        end
+function precompute_local_tensor(Nbasis, p, nodes, func1, func2, func3)
+    # k_e[i,j,k] = ∫ φ_i φ_j φ_k dx on the reference element
+    k_e = zeros(Nbasis, Nbasis, Nbasis)
+    for i in 1:Nbasis, j in 1:Nbasis, k in 1:Nbasis
+        k_e[i,j,k] = gauss_integrate(
+            nodes, p, 1,
+            x -> func1(x, i, nodes),
+            x -> func2(x, j, nodes),
+            x -> func3(x, k, nodes)
+        )
     end
-
+    k_e = reshape(k_e, Nbasis^2, Nbasis)
     return k_e
-    
 end
-
 
 function get_sparsity(Ne, Nbasis, p)
 
@@ -113,18 +108,17 @@ function assemble_global_from_local_tensor!(Ne, nnz, Nbasis, p, g, t_e, V)
     c = 1
     for e in 1:Ne
         idx=EToN(e, p)
-        glocal = g[idx]
+        glocal = @view g[idx]
         # do flattened tensor multiple giving flattened local 2d matrix
         k_e = t_e * glocal
-        k_e = reshape(k_e, (3,3))
-        for i in 1:Nbasis
-            for j in 1:Nbasis
-                # at starting element add to last element index,
-                # because they are the same
-                V[c] += k_e[i,j]
-                c += (i + j == 2*Nbasis ? 0 : 1)
-            end
+        k_e = reshape(k_e, (Nbasis,Nbasis))
+        for i in 1:Nbasis, j in 1:Nbasis
+            # at starting element add to last element index,
+            # because they are the same
+            V[c] += k_e[i,j]
+            c += 1
         end
+        c -= 1
     end
 end
 
@@ -214,7 +208,6 @@ dlag(x, nodes) = ForwardDiff.derivative(x -> lag(x, nodes), x)
 # evaluate basis function local index j at x with element nodes "nodes"
 function lb(x, j, nodes)
 
-    
     l = lag(x, nodes)
     w = 1/dlag(nodes[j], nodes)
     
