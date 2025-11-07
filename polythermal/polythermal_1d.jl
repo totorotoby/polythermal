@@ -90,12 +90,15 @@ let
     Nt = Γ_nodes[end]
     
     #--- precomputed matrices ---#
-    I, J = get_sparsity(Ne, Nbasis, p)
-    nnz = length(I)
-    V = zeros(nnz)
+    nnzt = NNZ(Γ, Nbasis)
+    nnzc = NNZ(Γc,Nbasis)
+    It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
+    Ic, Jc = get_sparsity(Γ, nnzc, Nbasis, p)
+    
     # element tensor matrix used to assemble coupled matrices
     nodes = collect(0:he/p:he)
-    ke = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    me = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    ke = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     
     # static global operators
     Mlump = get_lumped_mass(Ne, Nbasis, p, z, N)
@@ -119,16 +122,23 @@ let
               α = α,
               η = η,
               g = g,
-              κ = κ)
+              κ = κ,
+              nnzt = nnzt
+              nnzc = nnzc)
 
-    ops = (ke = ke,
+    ops = (It = It,
+           Jt = Jt,
+           Ic = Ic,
+           Jc = Jc,
+           me = me,
+           ke = ke,
            Mlump = Mlump,
            K = K,
            S = S,
            F = F)
 
     
-    for i = 1:200
+    for i = 1:1
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     end
 

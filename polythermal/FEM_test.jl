@@ -2,7 +2,7 @@ using Plots
 include("assemble.jl")
 
 # number of elements
-Ne = 3
+Ne = 2096
 # basis order
 p = 2
 # number basis functions per element
@@ -22,8 +22,10 @@ x = 0:h:1
 # function vector
 g = gf.(x)
 #--- New version ---#
-I, J = get_sparsity(Ne, Nbasis, p)
-nnz = length(I)
+nnz = NNZ(Ne, Nbasis)
+Imat, Jmat = get_sparsity(Ne, nnz, Nbasis, p)
+
+error()
 V = zeros(nnz)
 k_e = precompute_local_tensor(Nbasis, p, [0, he/2, he], lb, lb, lb)
 @time assemble_global_from_local_tensor!(Ne, nnz, Nbasis, p, g, k_e, V)

@@ -79,19 +79,20 @@ function precompute_local_tensor(Nbasis, p, nodes, func1, func2, func3)
     return k_e
 end
 
-function get_sparsity(Ne, Nbasis, p)
+function get_sparsity(Ne, nnz, Nbasis, p)
 
-    I = []
-    J = []
+    I = zeros(nnz)
+    J = zeros(nnz)
+    c = 1
     for e in 1:Ne
         for i in 1:Nbasis
             row = (p*e) + (i-p)
             for j in 1:Nbasis
                 col = (p*e) + (j-p)
-                idx = inCOO(I, J, row, col)
-                if idx == -1
-                    push!(I, row)
-                    push!(J, col)
+                if i != Nbasis && j != Nbasis
+                    I[c] = row
+                    J[c] = col
+                    c += 1
                 end
             end
         end
@@ -251,6 +252,7 @@ end
  returns nodes in element =#
 EToX(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 EToN(e, p) = (e-1)*p + 1 : (e-1)*p + p + 1
+NNZ(Ne, Nbasis) = Ne * (Nbasis)^2 - Ne + 1
 
 function get_temp(H, T_m)
     return min.(T_m, H)
@@ -317,8 +319,6 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     ϕinterp = Val -> expansion(Val, p, ϕ, z)
     ϕαinterp = Val -> expansion(Val, p, ϕ.^α, z)
 
-    #display(plot(ϕαinterp.(z), z))
-    # generate diffusion (second derivative) operator matrix
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -348,55 +348,38 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     
 end
 
-function get_porosity_ops(Ne, Nbasis, p, z, u, a, Pc)
+function get_compaction_ops_temp(Ne, Nbasis, p, z, ϕ, α, ops)
 
     N = p*Ne + 1
+    ϕ = ϕ .+ .0000001
     
-    Pcinterp = Val -> expansion(Val, p, Pc, z)
+    ϕα = ϕ.^α
+
+    I = ops.PeI
+    J = ops.PeJ
+    ke = ops.ke
+    me = ops.me
     
-    # generate lumped mass matrix 
+    # generate diffusion (second derivative) operator matrix
+    Vdiff = zeros(nnz)
+    Kϕα = sparse(I, J, Vdiff, N, N)
+    
+    # generate mass matrix with porosity integrated
     I = Int64[]
     J = Int64[]
     Vmass = Float64[]
-    diag = zeros(N)
     assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb,
-                     one,
-                     I, J, Vmass)
+                           z, lb, lb,
+                           ϕinterp,
+                           I, J, Vmass)
     
-    for nz = 1:length(I)
-        diag[I[nz]] += Vmass[nz]
-    end
-    for i = 1:N
-        diag[i] = 1/diag[i]
-    end
-    Mlump = spdiagm(0 => diag)
+    Mϕ = sparse(I, J, Vmass, N, N)
+    
+    # compation equation forcing
+    Fϕα = zeros(N)
+    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
 
-    # generate mass with Pc matrix 
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    diag = zeros(N)
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb,
-                     Pcinterp,
-                     I, J, Vmass)
-    Mpc = sparse(I, J, Vmass, N, N)
-
-    # generate advective (first derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vadv = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, dlb, u,
-                     I, J, Vadv)
-    S = sparse(I, J, Vadv, N, N)
-
-    # melting source term
-    F = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
-
-    return Mlump, Mpc, S, F
+    return Kϕα, Mϕ, Fϕα, ϕαinterp
     
 end
 
