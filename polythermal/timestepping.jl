@@ -22,12 +22,16 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     η = params.η
     g = params.g
     κ = params.κ
-    nnzt = params.nnzt
-    nnzc = params.nnzc
     
+    Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
-
+    
+    nnzt = NNZ(Γ, Nbasis)
+    nnzc = NNZ(Γc,Nbasis)
+    It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
+    Ic, Jc = get_sparsity(Γ, nnzc, Nbasis, p)
+    
     #---- compaction pressure solve ----#
     ϕ = get_porosity(H, 0.0)
     
@@ -42,6 +46,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
 
+    #=
     Kcomp, Mcomp,
     Fcomp, ϕαinterp = get_compaction_ops_temp(Γ, Nbasis,
                                               p, z,
@@ -54,7 +59,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     plot(Pc[1:Nt], z[1:Nt])
     display(plot!(Pc[1:Nt], z[1:Nt]))
     error()
-    
+    =#
     #--- solve for ethalpy ---#
     Q, S, M,
     Mlump, F = get_enth_ops(Ne, N, Γ,
