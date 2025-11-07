@@ -14,6 +14,7 @@ L = 1.0
 B = 0
 # length between nodes
 h = (L-B)/(N-1)
+he = (L-B)/Ne
 # spatial varying "test" function
 gf(x) = x^.2#lb(x, 1, [0, h, 2*h])
 # domain
@@ -24,7 +25,7 @@ g = gf.(x)
 I, J = get_sparsity(Ne, Nbasis, p)
 nnz = length(I)
 V = zeros(nnz)
-k_e = precompute_local_tensor(Nbasis, p, [-1, 0, 1], lb, lb, lb)
+k_e = precompute_local_tensor(Nbasis, p, [0, he/2, he], lb, lb, lb)
 @time assemble_global_from_local_tensor!(Ne, nnz, Nbasis, p, g, k_e, V)
 
 #--- old version ---#
@@ -36,12 +37,6 @@ k_e = precompute_local_tensor(Nbasis, p, [-1, 0, 1], lb, lb, lb)
     gf_expan = Val -> expansion(Val, p, g, x)
     assemble_matrix!(Ne, Nbasis, p, x, lb, lb, gf_expan, I_old, J_old, V_old) 
 end
-
-#display(V)
-#display(V_old)
-#display(V - V_old)
-display(V ./ V_old)
-
 
 @assert I ≈ I_old
 @assert J ≈ J_old

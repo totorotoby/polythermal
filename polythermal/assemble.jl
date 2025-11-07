@@ -147,7 +147,6 @@ function assemble_matrix!(Ne, Nbasis, p,
                 nodes = EToX(e, p, x)
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), k)
                 idx = inCOO(I, J, row, col)
-                #display(v)
                 if idx > 0 
                     V[idx] += v
                 else
@@ -157,7 +156,6 @@ function assemble_matrix!(Ne, Nbasis, p,
                 end
             end
         end
-        #error()
     end
 end
 
