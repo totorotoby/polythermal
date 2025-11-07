@@ -73,7 +73,8 @@ function assemble_local_tensor(Nbasis, p,
         for j in 1:Nbasis
             for k in 1:Nbasis
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), x ->  func3(x, k, nodes))
-                k_e[Nbasis * (i-1) + j, k] = v
+                # note: I think this right, but it might be transposed...
+                k_e[Nbasis * (j-1) + i, k] = v
             end
         end
     end
@@ -107,23 +108,24 @@ end
 Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
-function assemble_global_from_local_tensor(Ne, nnz, Nbasis, p, g, k_e)
+function assemble_global_from_local_tensor!(Ne, nnz, Nbasis, p, g, t_e, V)
 
-    V = zeros(nnz)
+    c = 1
     for e in 1:Ne
         idx=EToN(e, p)
         glocal = g[idx]
-        @show e
+        # do flattened tensor multiple giving flattened local 2d matrix
+        k_e = t_e * glocal
+        k_e = reshape(k_e, (3,3))
         for i in 1:Nbasis
-            row = (p*e) + (i-p)
-            @show row
             for j in 1:Nbasis
-                col = (p*e) + (j-p)
-                
+                # at starting element add to last element index,
+                # because they are the same
+                V[c] += k_e[i,j]
+                c += (i + j == 2*Nbasis ? 0 : 1)
             end
         end
     end
-    
 end
 
 #=
@@ -151,7 +153,7 @@ function assemble_matrix!(Ne, Nbasis, p,
                 nodes = EToX(e, p, x)
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), k)
                 idx = inCOO(I, J, row, col)
-                
+                #display(v)
                 if idx > 0 
                     V[idx] += v
                 else
@@ -161,6 +163,7 @@ function assemble_matrix!(Ne, Nbasis, p,
                 end
             end
         end
+        #error()
     end
 end
 
@@ -418,8 +421,8 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, lb, one,
                      I, J, Vmass)
-    @show length(Vmass)
-    error()
+    #@show length(Vmass)
+    #error()
     M = sparse(I, J, Vmass, N, N)
 
     
