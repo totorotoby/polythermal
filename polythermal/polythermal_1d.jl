@@ -9,11 +9,11 @@ let
 
     #---- testing solutions ----#
     # solution to steady BVP for temperature
-    cold_steady_test(z) = Hsurf + a.(z)/u.(z) * (z - H) +
+    cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
         (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
     
     s(t) = 3t^2 - 2t^3
-    initial_enth(z) = z > .5 ? Hsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
     initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
     initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
 
@@ -40,27 +40,27 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 64
+    Ne = 32
     # basis order
     p = 2
+    # number basis functions
+    Nbasis = p + 1
     # number of nodes
     N = p*Ne + 1
     # domain boundarys [L, B]
     L = 1.0
     B = 0
-    # length of element
+    # length between nodes
     h = (L-B)/(N-1)
+    # length of element
+    he = (L-B)/Ne
     # nodes
     z = collect(B:h:L)
     zfine = collect(B:h/2:L)
-    # number basis functions
-    Nbasis = p + 1
     
     #---- initial and boundary data ----#
-                      
     # surface temperature
     Tsurf = -.1
-    Hsurf = -.1
     # compaction pressure at the base
     Pcbase = 1.0
     
@@ -76,7 +76,6 @@ let
      ϕ = zeros(N)
      ϕ[:] = initial_pore.(z)
 
-
     # compaction pressure
     Pc = zeros(N)
 
@@ -84,13 +83,28 @@ let
     #Δt = h/abs(u(1))
     Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
-    # get divide index
+    #--- interface info ---#
     Γ = partition_temp_cold(T[:,2], p, z)
-
-    #display(Γ_node)
-    #plot(T[:,2], z)
-    #display(scatter!([T[Γ_node[2], 2]], [z[Γ_node[2]]]))
+    Γc = Ne - Γ
+    Γ_nodes = EToN(Γ, p)
+    Nt = Γ_nodes[end]
     
+    #--- precomputed matrices ---#
+    I, J = get_sparsity(Ne, Nbasis, p)
+    nnz = length(I)
+    V = zeros(nnz)
+    # element tensor matrix used to assemble coupled matrices
+    nodes = collect(0:he/p:he)
+    ke = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    
+    # static global operators
+    Mlump = get_lumped_mass(Ne, Nbasis, p, z, N)
+    K = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
+    # melting source term
+    F = zeros(N)
+    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
+
     params = (N = N,
               Ne = Ne,
               Nbasis = Nbasis,
@@ -107,9 +121,15 @@ let
               g = g,
               κ = κ)
 
+    ops = (ke = ke,
+           Mlump = Mlump,
+           K = K,
+           S = S,
+           F = F)
+
     
-    for i = 1:1
-        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, Δt)
+    for i = 1:200
+        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
@@ -118,8 +138,8 @@ let
     #writedlm("H.end", H, ',')
     
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
     #display(plot!(T[:,1], z, label="T"))
     
     

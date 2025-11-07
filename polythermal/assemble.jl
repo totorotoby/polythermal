@@ -323,7 +323,7 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     I = Int64[]
     J = Int64[]
     Vdiff = Float64[]
-    @time assemble_matrix!(Ne, Nbasis, p,
+    assemble_matrix!(Ne, Nbasis, p,
                            z, dlb, dlb, ϕαinterp,
                            I, J, Vdiff)
     
@@ -333,7 +333,7 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     I = Int64[]
     J = Int64[]
     Vmass = Float64[]
-    @time assemble_matrix!(Ne, Nbasis, p,
+    assemble_matrix!(Ne, Nbasis, p,
                            z, lb, lb,
                            ϕinterp,
                            I, J, Vmass)
@@ -342,7 +342,7 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     
     # compation equation forcing
     Fϕα = zeros(N)
-    @time assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
+    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
 
     return Kϕα, Mϕ, Fϕα, ϕαinterp
     
@@ -445,6 +445,18 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     S = sparse(I, J, Vadv, N, N)
 
 
+
+    # generate mass with Pc matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Γ, Nbasis, p,
+                     z, lb, lb,
+                     Pcinterp,
+                     I, J, Vmass)
+    Mpc = sparse(I, J, Vmass, N, N)
+
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -458,17 +470,7 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
     K = sparse(I, J, Vdiff, N, N)
-    
-    # generate mass with Pc matrix 
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    diag = zeros(N)
-    assemble_matrix!(Γ, Nbasis, p,
-                     z, lb, lb,
-                     Pcinterp,
-                     I, J, Vmass)
-    Mpc = sparse(I, J, Vmass, N, N)
+
     
     Q = Mpc + K
 
@@ -478,4 +480,59 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
 
     return Q, S, M, Mlump, F
     
+end
+
+
+function get_lumped_mass(Ne, Nbasis, p, z, N)
+    
+    # generate lumped mass matrix 
+    I = Int64[]
+    J = Int64[]
+    Vmass = Float64[]
+    diag = zeros(N)
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, lb,
+                     one,
+                     I, J, Vmass)
+
+    for nz = 1:length(I)
+        diag[I[nz]] += Vmass[nz]
+    end
+    for i = 1:N
+        diag[i] = 1/diag[i]
+    end
+    
+    Mlump = spdiagm(0 => diag)
+
+    return Mlump
+end
+
+function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    # generate diffusion (second derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vdiff = Float64[]
+    assemble_matrix!(Γc, Nbasis, p,
+                     z, dlb, dlb, one,
+                     I, J, Vdiff)
+
+    # this is tricky, its just moving the indices to the cold region,
+    # but we generated with indices starting at 0 in temperate region
+    I = I .+ (Nt - 1)
+    J = J .+ (Nt - 1)
+    K = sparse(I, J, Vdiff, N, N)
+    return K
+end
+
+function get_advection_matrix(Ne, Nbasis, p, z, u, N)
+    # generate advective (first derivative) operator matrix
+    I = Int64[]
+    J = Int64[]
+    Vadv = Float64[]
+    assemble_matrix!(Ne, Nbasis, p,
+                     z, lb, dlb, u,
+                     I, J, Vadv)
+    S = sparse(I, J, Vadv, N, N)
+    
+    return S
 end
