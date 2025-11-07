@@ -88,6 +88,9 @@ let
     Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
+
+    nnzt = NNZ(Γ, Nbasis)
+    It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
     nodes = collect(0:he/p:he)
@@ -97,12 +100,17 @@ let
     # static global operators
     Mlump = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    K = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    Kval, Ic, Jc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     
     # melting source term
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
+    VKϕ = zeros(nnzt)
+    VMϕ = zeros(nnzt)
+    VMP = zeros(nnzt)
+    Fϕ = zeros(nnzt)
+    
     params = (N = N,
               Ne = Ne,
               Nbasis = Nbasis,
@@ -117,18 +125,27 @@ let
               α = α,
               η = η,
               g = g,
-              κ = κ)
+              κ = κ,
+              nnzt = nnzt)
 
-
-    ops = (me = me,
-           ke = ke,
-           Mlump = Mlump,
-           K = K,
-           S = S,
-           F = F)
+    c_ops = (Ic = Ic,
+             Jc = Jc,
+             Kval = Kval)
+    g_ops = (S = S,
+             F = F,
+             Mlump = Mlump)
+    
+    t_ops = (It = It,
+             Jt = Jt,
+             VKϕ = VKϕ,
+             VMϕ = VMϕ,
+             VMP = VMP,
+             Fϕ = Fϕ,
+             me = me,
+             ke = ke)
 
     
-    for i = 1:10
+    for i = 1:1
         (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     end
 

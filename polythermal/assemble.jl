@@ -465,6 +465,11 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     
 end
 
+function get_temperate_ops(Ne, nnz, Nbasis, p, ϕ, Pe, t_ops)
+
+
+
+end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)
     
@@ -503,8 +508,7 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     # but we generated with indices starting at 0 in temperate region
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
-    K = sparse(I, J, Vdiff, N, N)
-    return K
+    return Vdiff, I, J
 end
 
 function get_advection_matrix(Ne, Nbasis, p, z, u, N)

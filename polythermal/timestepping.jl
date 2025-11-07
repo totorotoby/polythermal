@@ -27,10 +27,6 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
     
-    nnzt = NNZ(Γ, Nbasis)
-    nnzc = NNZ(Γc,Nbasis)
-    It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
-    Ic, Jc = get_sparsity(Γ, nnzc, Nbasis, p)
     
     #---- compaction pressure solve ----#
     ϕ = get_porosity(H, 0.0)
@@ -46,27 +42,18 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
     # sovle BVP for compation pressure
     Pc[1:Nt] .= A\R
 
-    #=
-    Kcomp, Mcomp,
-    Fcomp, ϕαinterp = get_compaction_ops_temp(Γ, Nbasis,
-                                              p, z,
-                                              ϕ, α, ops)
-    A = -κ * δ .* Kcomp - 1/η .* Mcomp
-    R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 1)
-    Pc2[1:Nt] .= A\R
-
     plot(Pc[1:Nt], z[1:Nt])
     display(plot!(Pc[1:Nt], z[1:Nt]))
     error()
-    =#
+
     #--- solve for ethalpy ---#
     Q, S, M,
     Mlump, F = get_enth_ops(Ne, N, Γ,
                                      Nt, Nbasis,
                                      p, z, u, a,
                                      Pc)
-    
+
+    #=
     ops = (Δt = Δt,
            F = F,
            M = M,
@@ -77,7 +64,8 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
            Nt = Nt)
     
     # picard iterations
-    #picard!(H, ops, .0001, 3)
+    picard!(H, ops, .0001, 3)
+    =#
     
     # explicit (and stiff) solve
     ops = (Nt = Nt,
@@ -88,15 +76,28 @@ function timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
            Tsurf = Tsurf)
 
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
+
+    Kϕ, Mϕ, MPe, Fϕ = get_temp_ops()
+
+
+
     
+    update_cold_ops!()
+
+
+
+    #--- re-partition ---#
+    T_temp = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T_temp, p, z)
+
+
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     #plot(Pc[1:Nt], z[1:Nt], label="Pc")
     #display(plot!(H[:], z, label="H"))
     #display(plot!(T[:,1], z, label="T"))
     #sleep(.05)
-    # re-partition
-    T_temp = get_temp(H, 0.0)
-    Γ = partition_temp_cold(T_temp, p, z)
+
+    
     return (Γ, H, T, ϕ, Pc)
     
 end
