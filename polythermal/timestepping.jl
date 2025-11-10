@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
+function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -28,18 +28,17 @@ function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     Nt = Γ_nodes[end]
     
     #---- compaction pressure solve ----#
+
     ϕ = get_porosity(H, 0.0)
-    @time begin
-        Kcomp, Mcomp,
-        Fcomp, ϕαinterp = get_compaction_ops(Γ, Nbasis,
+    
+    Kcomp, Mcomp,
+    Fcomp, ϕαinterp = get_compaction_ops(Γ, Nbasis,
                                          p, z,
                                          ϕ, α)
-        A = -κ * δ .* Kcomp - 1/η .* Mcomp
-        R = κ * g .* Fcomp
-        enforce_dirchlet!(A, R, Pcbase, 1)
-        Pc[1:Nt] .= A\R
-    end
-    #display(plot(Pc[1:Nt], z[1:Nt]))
+    A = -κ * δ .* Kcomp - 1/η .* Mcomp
+    R = κ * g .* Fcomp
+    enforce_dirchlet!(A, R, Pcbase, 1)
+    Pc[1:Nt] .= A\R
 
     #--- solve for ethalpy ---#
     Q, S, M,
@@ -47,8 +46,7 @@ function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
                             Nt, Nbasis,
                             p, z, u, a,
                             Pc)
-
-    #=
+    
     ops = (Δt = Δt,
            F = F,
            M = M,
@@ -60,9 +58,10 @@ function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     
     # picard iterations
     picard!(H, ops, .0001, 3)
-    =#
+
     
     # explicit (and stiff) solve
+    #=
     ops = (Nt = Nt,
            Q = Q,
            S = S,
@@ -71,17 +70,15 @@ function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
            Tsurf = Tsurf)
 
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-
-    display(plot(H, z))
-    
+    =#
     #--- new solver ---#
-
+    #=
+    ϕ = get_porosity(H, 0.0)
     get_temperate_ops!(Γ, Nbasis, p, z, ϕ, Pc, α, t_ops)
-    solve_Pc(Nt, ϕ, Pc, params, t_ops)
+    solve_Pc!(Nt, ϕ, Pc, params, t_ops)
 
     Q = construct_Q(N, t_ops, c_ops, g_ops)
 
-    #display(
     ops = (Nt = Nt,
            Q = Q,
            S = g_ops.S,
@@ -90,34 +87,36 @@ function timestep(H, T, ϕ, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
            Tsurf = Tsurf)
     
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-
+    =#
     #--- re-partition ---#
-    @time T_temp = get_temp(H, 0.0)
-    error()
-    Γ = partition_temp_cold(T_temp, p, z)
-
-    update_cold_ops!()
-
+    T = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T, p, z)
+    @show Γ
+    t_ops.NNZT[1] = NNZ(Γ, Nbasis)
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
     #display(plot!(T[:,1], z, label="T"))
     #sleep(.05)
 
-    
-    return (Γ, H, T, ϕ, Pc)
+    return (Γ, H, Pc)
     
 end
 
 function construct_Q(N, t_ops, c_ops,  g_ops)
 
-    nnzt = t_ops.nnzt
+    nnzt = t_ops.NNZT[1]
     VK = c_ops.VK
     VMP = t_ops.VMP
     VQ = g_ops.VQ
     I = g_ops.I
     J = g_ops.J
-
+    nnz = length(I)
+    
+    nnzc = nnz - nnzt
+    #@show nnzc
+    
+    #VK = 
     VQ[1:nnzt] .= VMP[:]
     VQ[nnzt] += VK[1]
     VQ[nnzt + 1: end] .= VK[2:end]
@@ -145,9 +144,9 @@ function solve_Pc!(Nt, ϕ, Pc, params, t_ops)
     Kϕα = sparse(It, Jt, VKϕ, Nt, Nt)
     Mϕ = sparse(It, Jt, VMϕ, Nt, Nt)
 
-    A1 = -κ * δ .* Kϕα - 1/η .* Mϕ
-    R1 = κ * g .* Fϕ
-    enforce_dirchlet!(A1, R1, Pcbase, 1)
+    A = -κ * δ .* Kϕα - 1/η .* Mϕ
+    R = κ * g .* Fϕ
+    enforce_dirchlet!(A, R, Pcbase, 1)
     
     Pc[1:Nt] .= A\R
     
@@ -184,9 +183,8 @@ function enthalpy_rhs(h, params)
     RHS = A * h + Mlump * F
     RHS[end] = 0.0
     RHS[Nt] = 0.0
-    
+
     return RHS
-    
 end
 
 

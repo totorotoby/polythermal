@@ -114,6 +114,8 @@ let
     VMP = zeros(nnzt)
     VQ = zeros(nnz)
     Fϕ = zeros(Nt)
+    NNZT = zeros(Int, 1)
+    NNZT[1] = nnzt
     
     params = (N = N,
               Ne = Ne,
@@ -142,7 +144,7 @@ let
              F = F,
              Mlump = Mlump)
     
-    t_ops = (nnzt = nnzt,
+    t_ops = (NNZT = NNZT,
              It = It,
              Jt = Jt,
              VKϕ = VKϕ,
@@ -154,11 +156,10 @@ let
              de = de)
 
     
-    for i = 1:1
-        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ,
-                                    Pc, Γ, params,
-                                    c_ops, t_ops,
-                                    g_ops, Δt)
+    for i = 1:1000
+        (Γ, H, Pc) = timestep(H, Pc, Γ, params,
+                              c_ops, t_ops,
+                              g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
@@ -167,8 +168,8 @@ let
     #writedlm("H.end", H, ',')
     
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    display(plot!(H[:], z, label="H"))
+    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    #display(plot!(H[:], z, label="H"))
     #display(plot!(T[:,1], z, label="T"))
     
     
