@@ -80,8 +80,8 @@ let
     Pc = zeros(N)
 
     # advective cfl
-    #Δt = h/abs(u(1))
-    Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
+    Δt = h/abs(u(1))
+    #Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
     #--- interface info ---#
     Γ = partition_temp_cold(T[:,2], p, z)
@@ -101,7 +101,7 @@ let
     de = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
     
     # static global operators
-    Mlump = get_lumped_mass(Ne, Nbasis, p, z, N)
+    Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
     VK, Ic, Jc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     
@@ -142,7 +142,8 @@ let
              VQ = VQ,
              S = S,
              F = F,
-             Mlump = Mlump)
+             Mlump = Mlump,
+             M = M)
     
     t_ops = (NNZT = NNZT,
              It = It,

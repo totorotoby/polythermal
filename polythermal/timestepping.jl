@@ -28,7 +28,7 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     Nt = Γ_nodes[end]
     
     #---- compaction pressure solve ----#
-
+    #=
     ϕ = get_porosity(H, 0.0)
     
     Kcomp, Mcomp,
@@ -39,7 +39,7 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     R = κ * g .* Fcomp
     enforce_dirchlet!(A, R, Pcbase, 1)
     Pc[1:Nt] .= A\R
-
+    
     #--- solve for ethalpy ---#
     Q, S, M,
     Mlump, F = get_enth_ops(Ne, N, Γ,
@@ -58,7 +58,7 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     
     # picard iterations
     picard!(H, ops, .0001, 3)
-
+    =#
     
     # explicit (and stiff) solve
     #=
@@ -72,21 +72,34 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- new solver ---#
-    #=
+    
     ϕ = get_porosity(H, 0.0)
     get_temperate_ops!(Γ, Nbasis, p, z, ϕ, Pc, α, t_ops)
     solve_Pc!(Nt, ϕ, Pc, params, t_ops)
 
     Q = construct_Q(N, t_ops, c_ops, g_ops)
 
+        ops = (Δt = Δt,
+               F = g_ops.F,
+               M = g_ops.M,
+               Q = Q,
+               S = g_ops.S,
+               z = z,
+               Tsurf = Tsurf,
+               Nt = Nt)
+    
+    # picard iterations
+    picard!(H, ops, .0001, 3)
+    #=
     ops = (Nt = Nt,
            Q = Q,
            S = g_ops.S,
            Mlump = g_ops.Mlump,
            F = g_ops.F,
            Tsurf = Tsurf)
+
     
-    H[:] = RK4(H, Δt, ops, enthalpy_rhs)
+    #H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- re-partition ---#
     T = get_temp(H, 0.0)

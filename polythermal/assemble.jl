@@ -448,7 +448,7 @@ function get_lumped_mass(Ne, Nbasis, p, z, N)
     Mlump = spdiagm(0 => diag)
     M =  sparse(I, J, Vmass, N, N)
     
-    return Mlump
+    return Mlump, M
 end
 
     
