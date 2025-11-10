@@ -40,7 +40,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 32
+    Ne = 64
     # basis order
     p = 2
     # number basis functions
@@ -90,17 +90,20 @@ let
     Nt = Γ_nodes[end]
 
     nnzt = NNZ(Γ, Nbasis)
+    nnz = NNZ(Ne, Nbasis)
     It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
+    I, J = get_sparsity(Ne, nnz, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
     nodes = collect(0:he/p:he)
-    me = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
-    ke = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
-
+    mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
+    de = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
+    
     # static global operators
     Mlump = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    Kval, Ic, Jc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    VK, Ic, Jc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     
     # melting source term
     F = zeros(N)
@@ -109,7 +112,8 @@ let
     VKϕ = zeros(nnzt)
     VMϕ = zeros(nnzt)
     VMP = zeros(nnzt)
-    Fϕ = zeros(nnzt)
+    VQ = zeros(nnz)
+    Fϕ = zeros(Nt)
     
     params = (N = N,
               Ne = Ne,
@@ -125,28 +129,36 @@ let
               α = α,
               η = η,
               g = g,
-              κ = κ,
-              nnzt = nnzt)
+              κ = κ)
 
     c_ops = (Ic = Ic,
              Jc = Jc,
-             Kval = Kval)
-    g_ops = (S = S,
+             VK = VK)
+    
+    g_ops = (I = I,
+             J = J,
+             VQ = VQ,
+             S = S,
              F = F,
              Mlump = Mlump)
     
-    t_ops = (It = It,
+    t_ops = (nnzt = nnzt,
+             It = It,
              Jt = Jt,
              VKϕ = VKϕ,
              VMϕ = VMϕ,
              VMP = VMP,
              Fϕ = Fϕ,
-             me = me,
-             ke = ke)
+             mt = mt,
+             kt = kt,
+             de = de)
 
     
     for i = 1:1
-        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ, Pc, Γ, params, ops, Δt)
+        (Γ, H, T, ϕ, Pc) = timestep(H, T, ϕ,
+                                    Pc, Γ, params,
+                                    c_ops, t_ops,
+                                    g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)

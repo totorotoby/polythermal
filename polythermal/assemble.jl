@@ -60,6 +60,18 @@ function gauss_integrate(element, p, type, funcs...)
     return scale *  val
 end
 
+function precompute_local_mat(Nbasis, p, nodes, func1, func2)
+    # k_e[i,j] = ∫ φ_i φ_j dx on the reference element
+    k_e = zeros(Nbasis, Nbasis)
+    for i in 1:Nbasis, j in 1:Nbasis
+        k_e[i,j] = gauss_integrate(
+            nodes, p, 1,
+            x -> func1(x, i, nodes),
+            x -> func2(x, j, nodes)
+        )
+    end
+    return k_e
+end
 
 #=
 Assembles a local over the reference element tensor with ψ_iψ_jψ_k, where ψ is lag or derivative of.
@@ -81,15 +93,15 @@ end
 
 function get_sparsity(Ne, nnz, Nbasis, p)
 
-    I = zeros(nnz)
-    J = zeros(nnz)
+    I = zeros(Int, nnz)
+    J = zeros(Int, nnz)
     c = 1
     for e in 1:Ne
         for i in 1:Nbasis
             row = (p*e) + (i-p)
             for j in 1:Nbasis
                 col = (p*e) + (j-p)
-                if i != Nbasis && j != Nbasis
+                if (i != Nbasis || j != Nbasis)
                     I[c] = row
                     J[c] = col
                     c += 1
@@ -97,14 +109,30 @@ function get_sparsity(Ne, nnz, Nbasis, p)
             end
         end
     end
+    I[end] = (p*Ne) + 1
+    J[end] = (p*Ne) + 1
     return I, J
 end
 
+function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F)
+
+    for e in 1:Ne
+        idx=EToN(e, p)
+        glocal = @view g[idx]
+        # do flattened tensor multiple giving flattened local 2d matrix
+        k_e = t_e * glocal
+        for i in 1:Nbasis
+            # at starting element add to last element index,
+            # because they are the same
+            F[idx[i]] += k_e[i]
+        end
+    end
+end
 #=
 Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
-function assemble_global_from_local_tensor!(Ne, nnz, Nbasis, p, g, t_e, V)
+function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V)
 
     c = 1
     for e in 1:Ne
@@ -262,52 +290,6 @@ function get_porosity(H, T_m)
     return max.(T_m, H)
 end
 
-function get_temperature_ops(Ne, Nbasis, p, z, u, a, α)
-
-    #---- building discrete operators ----#
-    # NOTE: knowing the non-zero patterns are the same
-    # for the matrices I could be generating one large
-    # matrix by doing operations on the values then constructing
-
-    N = p*Ne + 1
-    # generate diffusion (second derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vdiff = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, dlb, dlb, one,
-                    I, J, Vdiff)
-    K = sparse(I, J, Vdiff, N, N)
-
-    
-    # generate advective (first derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-
-    Vadv = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, dlb, u,
-                     I, J, Vadv)
-    S = sparse(I, J, Vadv, N, N)
-    
-    # generate mass operator matrix (no derivatives)
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb, one,
-                     I, J, Vmass)
-    M = sparse(I, J, Vmass, N, N)
-
-
-    # generate dissipation source term in cold region
-    F = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
-
-    return K, S, M, F
-    
-end
-
 # TODO: probably don't need to recompute all the gaussian integration here
 # can probably just generate new diagonals to multiply K M and F by
 function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
@@ -326,42 +308,6 @@ function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
     assemble_matrix!(Ne, Nbasis, p,
                            z, dlb, dlb, ϕαinterp,
                            I, J, Vdiff)
-    
-    Kϕα = sparse(I, J, Vdiff, N, N)
-    
-    # generate mass matrix with porosity integrated
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                           z, lb, lb,
-                           ϕinterp,
-                           I, J, Vmass)
-    
-    Mϕ = sparse(I, J, Vmass, N, N)
-    
-    # compation equation forcing
-    Fϕα = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
-
-    return Kϕα, Mϕ, Fϕα, ϕαinterp
-    
-end
-
-function get_compaction_ops_temp(Ne, Nbasis, p, z, ϕ, α, ops)
-
-    N = p*Ne + 1
-    ϕ = ϕ .+ .0000001
-    
-    ϕα = ϕ.^α
-
-    I = ops.PeI
-    J = ops.PeJ
-    ke = ops.ke
-    me = ops.me
-    
-    # generate diffusion (second derivative) operator matrix
-    Vdiff = zeros(nnz)
     Kϕα = sparse(I, J, Vdiff, N, N)
     
     # generate mass matrix with porosity integrated
@@ -395,8 +341,7 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, lb, one,
                      I, J, Vmass)
-    #@show length(Vmass)
-    #error()
+    
     M = sparse(I, J, Vmass, N, N)
 
     
@@ -439,7 +384,6 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
                      Pcinterp,
                      I, J, Vmass)
     Mpc = sparse(I, J, Vmass, N, N)
-
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -465,10 +409,21 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     
 end
 
-function get_temperate_ops(Ne, nnz, Nbasis, p, ϕ, Pe, t_ops)
+function get_temperate_ops!(Ne, Nbasis, p, z, ϕ, Pc, α, t_ops)
 
+    mt = t_ops.mt
+    kt = t_ops.kt
+    de = t_ops.de
+    VKϕ = t_ops.VKϕ
+    VMϕ = t_ops.VMϕ
+    VMP = t_ops.VMP
+    Fϕ = t_ops.Fϕ
 
-
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ, mt, VMϕ)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, Pc, mt, VMP)
+    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, de, Fϕ)
+    
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)
@@ -491,10 +446,12 @@ function get_lumped_mass(Ne, Nbasis, p, z, N)
     end
     
     Mlump = spdiagm(0 => diag)
-
+    M =  sparse(I, J, Vmass, N, N)
+    
     return Mlump
 end
 
+    
 function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
