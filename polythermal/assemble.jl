@@ -15,7 +15,7 @@ function gauss_integrate(element, p, type, funcs...)
     weights = nothing
     # 4th Order normal gaussian
     if type == 1
-
+        #=
         weights = [0.6521451548625461
                    0.6521451548625461
                    0.3478548451374538
@@ -24,8 +24,27 @@ function gauss_integrate(element, p, type, funcs...)
         abscissa = [-0.3399810435848563
     	            0.3399810435848563
     	            -0.8611363115940526
-    	            0.8611363115940526]
+    	0.8611363115940526]
+        =#
+        weights = [0.3626837833783620,
+	           0.3626837833783620,	
+	           0.3137066458778873,	
+	           0.3137066458778873,	
+	           0.2223810344533745,	
+	           0.2223810344533745,	
+	           0.1012285362903763,	
+	           0.1012285362903763]	
 
+        abscissa = [-0.1834346424956498,
+                    0.1834346424956498, 
+                    -0.5255324099163290,
+                    0.5255324099163290, 
+                    -0.7966664774136267,
+                    0.7966664774136267, 
+                    -0.9602898564975363,
+                    0.9602898564975363] 
+        
+        
     end
         
     val = 0.0
@@ -94,6 +113,7 @@ end
 
 function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F)
 
+    F[:] .= 0
     for e in 1:Ne
         idx=EToN(e, p)
         glocal = @view g[idx]
@@ -110,18 +130,20 @@ end
 Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
-function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Float64})
+function assemble_global_from_local_tensor!(
+        Ne, Nbasis, p, g, t_e, V::Vector{Float64})
 
     c = 1
     for e in 1:Ne
-        idx=EToN(e, p)
+        idx = EToN(e, p)
         glocal = @view g[idx]
-        # do flattened tensor multiple giving flattened local 2d matrix
-        k_e = t_e * glocal
-        k_e = reshape(k_e, (Nbasis,Nbasis))
+        k_e = zeros(Nbasis, Nbasis)
         for i in 1:Nbasis, j in 1:Nbasis
-            # at starting element add to last element index,
-            # because they are the same
+            for k in 1:Nbasis
+                k_e[i,j] += t_e[(i-1)*Nbasis + j, k] * glocal[k]
+            end
+        end
+        for i in 1:Nbasis, j in 1:Nbasis
             V[c] += k_e[i,j]
             c += 1
         end
@@ -132,12 +154,17 @@ end
 function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
                                             M::SparseMatrixCSC{Float64, Int64})
 
+    M[:] .= 0
     for e in 1:Ne
         idx=EToN(e, p)
         glocal = @view g[idx]
         # do flattened tensor multiple giving flattened local 2d matrix
-        k_e = t_e * glocal
-        k_e = reshape(k_e, (Nbasis,Nbasis))
+        k_e = zeros(Nbasis,Nbasis)
+        for i in 1:Nbasis, j in 1:Nbasis
+            for k in 1:Nbasis
+                k_e[i,j] += t_e[(i-1)*Nbasis+j,k] * glocal[k]
+            end
+        end
         for i in 1:Nbasis, j in 1:Nbasis
             # at starting element add to last element index,
             # because they are the same
@@ -407,13 +434,15 @@ end
 function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
                            ϕ, α, mt, kt, dm, It, Jt)
 
+    ϕtemp = ϕ .+ .000001
+    
     VKϕ = zeros(nnzt)
     VMϕ = zeros(nnzt)
     Fϕ = zeros(N)
 
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ, mt, VMϕ)
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)    
-    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, dm, Fϕ)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp, mt, VMϕ)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp.^α, kt, VKϕ)    
+    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕtemp.^α, dm, Fϕ)
 
     Kϕ = sparse(It, Jt, VKϕ, N, N)
     Mϕ = sparse(It, Jt, VMϕ, N, N)
@@ -424,14 +453,14 @@ end
 
 function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    ϕ = ϕ .+ .000001
+    ϕtemp = ϕ .+ .000001
     
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
-                                       ϕ.^(params.α), t_ops.kt, t_ops.Kϕ)
+                                       ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ)
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
-                                       ϕ, t_ops.mt, t_ops.Mϕ)
+                                       ϕtemp, t_ops.mt, t_ops.Mϕ)
     assemble_global_vec_from_local_mat!(Γ, params.Nbasis, params.p,
-                                        ϕ.^(params.α), t_ops.dm, t_ops.Fϕ)
+                                        ϕtemp.^(params.α), t_ops.dm, t_ops.Fϕ)
 end
     
 function update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)

@@ -61,6 +61,7 @@ function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
 
     plot!(H, z, label='H')
     T = get_temp(H, 0.0)
+    ϕ = get_porosity(H, 0.0)
     Γ = partition_temp_cold(T, p, z)
     # explicit (and stiff) solve
     #=
@@ -74,14 +75,20 @@ function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- new solver ---#
-    #display(Kcomp - t_ops.Kϕ[1:Nt, 1:Nt])
-    #display(Mcomp - t_ops.Mϕ[1:Nt, 1:Nt])
-    #display(Fcomp - t_ops.Fϕ[1:Nt])
+    
+    ϕ1 = get_porosity(H1, 0.0)
+    update_ϕ_ops!(Γ, ϕ1, Nt, params, t_ops)
+
+    #display(Kcomp - t_ops.Kϕ[1:Nt,1:Nt])
+    #display(Mcomp - t_ops.Mϕ[1:Nt,1:Nt])
     
     solve_Pc!(Nt, Pc1, params, t_ops)
+    #display(maximum(abs.(Pc1 - Pc)))
     update_Q!(Γ, Nt, Pc1, params, t_ops, g_ops)
     picard!(H1, g_ops, Δt, Tsurf, Nt, .0001, 100)
     
+    #display(Pc1 - Pc)
+    #error()
     #=
     ops = (Nt = Nt,
            Q = Q,
@@ -95,17 +102,14 @@ function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
     =#
 
     #--- re-partition ---#
-    T = get_temp(H1, 0.0)
-    Γ1 = partition_temp_cold(T, p, z)
-
-    ϕ1 = get_porosity(H1, 0.0)
-    update_ϕ_ops!(Γ, ϕ1, Nt, params, t_ops)
-
+    T1 = get_temp(H1, 0.0)
+    Γ1 = partition_temp_cold(T1, p, z)
+    #display(abs.(T1 - T))
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     plot!(Pc1[1:Nt], z[1:Nt], label="Pc1")
     display(plot!(H1[:], z, label="H1"))
     #display(plot!(T[:,1], z, label="T"))
-    sleep(.02)
+    sleep(.05)
 
     return (Γ, Γ1, H, H1, Pc, Pc1)
     
@@ -126,7 +130,7 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
     enforce_dirchlet!(A, R, Pcbase, 1)
-    
+
     Pc[1:Nt] .= A\R
     
 end
