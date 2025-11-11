@@ -15,17 +15,7 @@ function gauss_integrate(element, p, type, funcs...)
     weights = nothing
     # 4th Order normal gaussian
     if type == 1
-        #=
-        weights = [0.6521451548625461
-                   0.6521451548625461
-                   0.3478548451374538
-                   0.3478548451374538]
 
-        abscissa = [-0.3399810435848563
-    	            0.3399810435848563
-    	            -0.8611363115940526
-    	0.8611363115940526]
-        =#
         weights = [0.3626837833783620,
 	           0.3626837833783620,	
 	           0.3137066458778873,	
@@ -43,7 +33,6 @@ function gauss_integrate(element, p, type, funcs...)
                     0.7966664774136267, 
                     -0.9602898564975363,
                     0.9602898564975363] 
-        
         
     end
         
@@ -173,19 +162,6 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
     end
 end
 
-#=
-This function assembles a discrete diffusion and advection operators from the basis functions:
-    Ne: number of elements
-    Nbasis: number of basis functions per element = p + 1 (might not need to be carrying this around
-    p: order of basis
-    func1: function to integrate in element (a set of basis functions or its derivative)
-    func2: same as func1
-    k: parameter, can be known or
-       a guess if doing the inverse problem
-    I: non zero row indices
-    J: non zero column indices
-    V: non zero values
-=#
 function assemble_matrix!(Ne, Nbasis, p,
                           x, func1, func2, k,
                           I, J, V)
@@ -241,7 +217,6 @@ function enforce_dirchlet!(A, F, v, index)
 end
 
 #---- Barycentric lagragian interpolation ----#
-
 # computes numerator
 function lag(x, nodes)
     l = 1
@@ -294,12 +269,6 @@ function XToN(x, p, nodes)
     return e, nodes[1 + (e-1) * p : 1 + e*p]
 end
 
-#=
- Element to coordinates and nodes:
- e - element number
- p - order of basis
- nodes - list of global nodes
- returns nodes in element =#
 EToX(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 EToN(e, p) = (e-1)*p + 1 : (e-1)*p + p + 1
 NNZ(Ne, Nbasis) = Ne * (Nbasis)^2 - Ne + 1
@@ -310,125 +279,6 @@ end
 
 function get_porosity(H, T_m)
     return max.(T_m, H)
-end
-
-# TODO: probably don't need to recompute all the gaussian integration here
-# can probably just generate new diagonals to multiply K M and F by
-function get_compaction_ops(Ne, Nbasis, p, z, ϕ, α)
-
-    N = p*Ne + 1
-
-    ϕ = ϕ .+ .000001
-    
-    ϕinterp = Val -> expansion(Val, p, ϕ, z)
-    ϕαinterp = Val -> expansion(Val, p, ϕ.^α, z)
-
-    # generate diffusion (second derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vdiff = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                           z, dlb, dlb, ϕαinterp,
-                           I, J, Vdiff)
-    Kϕα = sparse(I, J, Vdiff, N, N)
-    
-    # generate mass matrix with porosity integrated
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                           z, lb, lb,
-                           ϕinterp,
-                           I, J, Vmass)
-    
-    Mϕ = sparse(I, J, Vmass, N, N)
-    
-    # compation equation forcing
-    Fϕα = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, dlb, ϕαinterp, one, Fϕα)
-
-    return Kϕα, Mϕ, Fϕα, ϕαinterp
-    
-end
-
-function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
-
-    Pcinterp = Val -> expansion(Val, p, Pc, z)
-    Γc = Ne - Γ
-
-    # generate mass operator matrix (no derivatives)
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb, one,
-                     I, J, Vmass)
-    
-    M = sparse(I, J, Vmass, N, N)
-
-    
-    # generate lumped mass matrix 
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    diag = zeros(N)
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb,
-                     one,
-                     I, J, Vmass)
-    
-    for nz = 1:length(I)
-        diag[I[nz]] += Vmass[nz]
-    end
-    for i = 1:N
-        diag[i] = 1/diag[i]
-    end
-    Mlump = spdiagm(0 => diag)
-
-    # generate advective (first derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vadv = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, dlb, u,
-                     I, J, Vadv)
-    S = sparse(I, J, Vadv, N, N)
-
-
-
-    # generate mass with Pc matrix 
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    diag = zeros(N)
-    assemble_matrix!(Γ, Nbasis, p,
-                     z, lb, lb,
-                     Pcinterp,
-                     I, J, Vmass)
-    Mpc = sparse(I, J, Vmass, N, N)
-    # generate diffusion (second derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vdiff = Float64[]
-    assemble_matrix!(Γc, Nbasis, p,
-                     z, dlb, dlb, one,
-                     I, J, Vdiff)
-
-    # this is tricky, its just moving the indices to the cold region,
-    # but we generated with indices starting at 0 in temperate region
-    I = I .+ (Nt - 1)
-    J = J .+ (Nt - 1)
-    K = sparse(I, J, Vdiff, N, N)
-
-    
-    Q = Mpc + K
-
-    # melting source term
-    F = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
-
-    return Q, S, M, Mlump, F
-    
 end
 
 function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
@@ -475,7 +325,6 @@ end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)
     
-    # generate lumped mass matrix 
     I = Int64[]
     J = Int64[]
     Vmass = Float64[]
@@ -497,7 +346,6 @@ function get_lumped_mass(Ne, Nbasis, p, z, N)
     
     return Mlump, M
 end
-
     
 function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     # generate diffusion (second derivative) operator matrix
@@ -507,9 +355,6 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     assemble_matrix!(Γc, Nbasis, p,
                      z, dlb, dlb, one,
                      I, J, Vdiff)
-
-    # this is tricky, its just moving the indices to the cold region,
-    # but we generated with indices starting at 0 in temperate region
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
     Kc = sparse(I,J, Vdiff, N,N)

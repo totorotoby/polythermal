@@ -106,12 +106,10 @@ let
     Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
-    Γ1 = Γ
 
     nnzt = NNZ(Γ, Nbasis)
     nnz = NNZ(Ne, Nbasis)
     It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
-    I, J = get_sparsity(Ne, nnz, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
     nodes = collect(0:he/p:he)
@@ -151,20 +149,12 @@ let
               κ = κ)
 
     for i = 1:200
-        (Γ, Γ1, H, H1, Pc, Pc1) = timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
+        (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
 
-    #writedlm("H.end", H, ',')
-    
-    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
-    #display(plot!(T[:,1], z, label="T"))
-    
-    
     nothing
      
 end

@@ -5,87 +5,20 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
+function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
-    N = params.N
-    Ne = params.Ne
-    Nbasis = params.Nbasis
     p = params.p
-    z = params.z
-    u = params.u
-    a = params.a
     Tsurf = params.Tsurf
-    Pcbase = params.Pcbase
-    Pe_inv = params.Pe_inv
-    δ = params.δ
-    α = params.α
-    η = params.η
-    g = params.g
-    κ = params.κ
+    z = params.z
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
-    
-    #---- compaction pressure solve ----#
-    
-    ϕ = get_porosity(H, 0.0)
-    
-    Kcomp, Mcomp,
-    Fcomp, ϕαinterp = get_compaction_ops(Γ, Nbasis,
-                                         p, z,
-                                         ϕ, α)
-    A = -κ * δ .* Kcomp - 1/η .* Mcomp
-    R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 1)
-    Pc[1:Nt] .= A\R
-    plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #--- solve for ethalpy ---#
-    Q, S, M,
-    Mlump, F = get_enth_ops(Ne, N, Γ,
-                            Nt, Nbasis,
-                            p, z, u, a,
-                            Pc)
-    
 
-    ops = (Δt = Δt,
-           F = F,
-           M = M,
-           Q = Q,
-           S = S,
-           z = z,
-           Tsurf = Tsurf,
-           Nt = Nt)
-    
-    # picard iterations
-    picard!(H, ops, .0001, 3)
-
-    plot!(H, z, label='H')
-    T = get_temp(H, 0.0)
-    ϕ = get_porosity(H, 0.0)
-    Γ = partition_temp_cold(T, p, z)
-    # explicit (and stiff) solve
-    #=
-    ops = (Nt = Nt,
-           Q = Q,
-           S = S,
-           Mlump = Mlump,
-           F = F,
-           Tsurf = Tsurf)
-
-    H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-    =#
     #--- new solver ---#
-    
-    ϕ1 = get_porosity(H1, 0.0)
-    update_ϕ_ops!(Γ, ϕ1, Nt, params, t_ops)
 
-    #display(Kcomp - t_ops.Kϕ[1:Nt,1:Nt])
-    #display(Mcomp - t_ops.Mϕ[1:Nt,1:Nt])
-    
-    solve_Pc!(Nt, Pc1, params, t_ops)
-    #display(maximum(abs.(Pc1 - Pc)))
-    update_Q!(Γ, Nt, Pc1, params, t_ops, g_ops)
-    picard!(H1, g_ops, Δt, Tsurf, Nt, .0001, 100)
+    solve_Pc!(Nt, Pc, params, t_ops)
+    update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
     
     #display(Pc1 - Pc)
     #error()
@@ -100,18 +33,18 @@ function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
     
     #H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
-
     #--- re-partition ---#
-    T1 = get_temp(H1, 0.0)
-    Γ1 = partition_temp_cold(T1, p, z)
-    #display(abs.(T1 - T))
-    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    plot!(Pc1[1:Nt], z[1:Nt], label="Pc1")
-    display(plot!(H1[:], z, label="H1"))
-    #display(plot!(T[:,1], z, label="T"))
-    sleep(.05)
+    T = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T, p, z)
+    
+    ϕ = get_porosity(H, 0.0)
+    update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    return (Γ, Γ1, H, H1, Pc, Pc1)
+    
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
+
+    return (Γ, H, Pc)
     
 end
 
@@ -134,23 +67,6 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     Pc[1:Nt] .= A\R
     
 end
-
-function porosity_rhs(ϕ, params)
-
-    Nt = params.Nt
-    Mlump = params.Mlump
-    Stemp = params.Stemp
-    Mpc = params.Mpc
-    Ftemp = params.Ftemp
-
-    # TODO: really need Pe_inv * Mpc but coded myself into a hole
-    RHS = Mlump * ((-Stemp - Mpc) * ϕ + Ftemp)
-    RHS[end] = 0.0
-    return RHS
-
-end
-
-
 
 #explict timestepping for enthalpy method
 function enthalpy_rhs(h, params)
@@ -220,31 +136,3 @@ function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
     
 end
 
-
-function picard!(H, ops, tol, maxiter)
-
-    Δt = ops.Δt
-    S = ops.S
-    M = ops.M
-    Q = ops.Q
-    F = ops.F
-    z = ops.z
-    Tsurf = ops.Tsurf
-    Nt = ops.Nt
-
-    Hprev = copy(H)
-    
-    A = (M + Δt/2 .* (S + Q))
-    R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
-    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
-    enforce_dirchlet!(A, R, 0.0, Nt)
-
-    H[:] .= A\R
-
-    #iter = 0
-
-    #while sum((H - Hprev).^2) > tol && iter < maxiter
-    #end
-         
-    
-end
