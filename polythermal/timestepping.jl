@@ -18,21 +18,12 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     solve_Pc!(Nt, Pc, params, t_ops)
     update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
-    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
-    
-    #display(Pc1 - Pc)
-    #error()
-    #=
-    ops = (Nt = Nt,
-           Q = Q,
-           S = g_ops.S,
-           Mlump = g_ops.Mlump,
-           F = g_ops.F,
-           Tsurf = Tsurf)
 
+    # do enthalpy either implicitly
+    #picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
+    # or explicitly
+    H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
     
-    #H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-    =#
     #--- re-partition ---#
     T = get_temp(H, 0.0)
     Γ = partition_temp_cold(T, p, z)
@@ -40,9 +31,8 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     ϕ = get_porosity(H, 0.0)
     update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    
-    plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    display(plot!(H[:], z, label="H"))
+    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    #display(plot!(H[:], z, label="H"))
 
     return (Γ, H, Pc)
     
@@ -69,16 +59,14 @@ function solve_Pc!(Nt, Pc, params, t_ops)
 end
 
 #explict timestepping for enthalpy method
-function enthalpy_rhs(h, params)
+function enthalpy_rhs(h, Nt, g_ops)
 
-    Nt = params.Nt
-    Q = params.Q
-    S = params.S
-    Mlump = params.Mlump
-    F = params.F
-    Tsurf = params.Tsurf
+    Q = g_ops.Q
+    S = g_ops.S
+    Mlump = g_ops.Mlump
+    F = g_ops.F
+
     A = Mlump * (- S - Q)
-    #enforce_dirchlet!(A, F, 0, size(A)[1])
     RHS = A * h + Mlump * F
     RHS[end] = 0.0
     RHS[Nt] = 0.0
@@ -87,13 +75,12 @@ function enthalpy_rhs(h, params)
 end
 
 
-function RK4(u, Δt, params, rhs)
-    Nt = params.Nt
+function RK4(u, Δt, Nt, params, g_ops, rhs)
     
-    k1 = Δt * rhs(u[:], params)
-    k2 = Δt * rhs(u[:] + k1/2, params)
-    k3 = Δt * rhs(u[:] + k2/2, params)
-    k4 = Δt * rhs(u[:] + k3, params)
+    k1 = Δt * rhs(u[:], Nt, g_ops)
+    k2 = Δt * rhs(u[:] + k1/2, Nt, g_ops)
+    k3 = Δt * rhs(u[:] + k2/2, Nt, g_ops)
+    k4 = Δt * rhs(u[:] + k3, Nt, g_ops)
 
     u_raw = u[:] + (k1 + 2k2 + 2k3 + k4) / 6
     u_smooth = Smoothing.binomial(u_raw, 1)
