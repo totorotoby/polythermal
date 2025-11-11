@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
+function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -74,19 +74,25 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     #--- new solver ---#
     
     ϕ = get_porosity(H, 0.0)
-    get_temperate_ops!(Γ, Nbasis, p, z, ϕ, Pc, α, t_ops)
+    new_elements = Γ - Γ_prev
+    get_temperate_ops!(Γ, new_elements, Nbasis, p, z, ϕ, Pc, α, t_ops)
+    if new_elements > 0
+        It, Jt = get_sparsity(Γ, t_ops.NNZT[1], Nbasis, p)
+        t_ops.It = It
+        t_ops.Jt = Jt
+    end
     solve_Pc!(Nt, ϕ, Pc, params, t_ops)
 
     Q = construct_Q(N, t_ops, c_ops, g_ops)
 
-        ops = (Δt = Δt,
-               F = g_ops.F,
-               M = g_ops.M,
-               Q = Q,
-               S = g_ops.S,
-               z = z,
-               Tsurf = Tsurf,
-               Nt = Nt)
+    ops = (Δt = Δt,
+           F = g_ops.F,
+           M = g_ops.M,
+           Q = Q,
+           S = g_ops.S,
+           z = z,
+           Tsurf = Tsurf,
+           Nt = Nt)
     
     # picard iterations
     picard!(H, ops, .0001, 3)
@@ -103,8 +109,8 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     =#
     #--- re-partition ---#
     T = get_temp(H, 0.0)
+    Γ_prev = Γ
     Γ = partition_temp_cold(T, p, z)
-    @show Γ
     t_ops.NNZT[1] = NNZ(Γ, Nbasis)
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
@@ -112,7 +118,7 @@ function timestep(H, Pc, Γ, params, c_ops, t_ops, g_ops, Δt)
     #display(plot!(T[:,1], z, label="T"))
     #sleep(.05)
 
-    return (Γ, H, Pc)
+    return (Γ, Γ_prev, H, Pc)
     
 end
 

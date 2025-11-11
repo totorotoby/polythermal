@@ -5,6 +5,30 @@ using DelimitedFiles
 include("assemble.jl")
 include("timestepping.jl")
 
+
+
+mutable struct t_ops
+    nnzt::Int
+    Kϕ::SparseMatrixCSC{Int, Float}
+    Mϕ::SparseMatrixCSC{Int, Float}
+    MP::SparseMatrixCSC{Int, Float}
+    Fϕ = Fϕ::Vector{Float}
+    mt::Matrix{Float}
+    kt::Matrix{Float}
+    de::Matrix{Float}
+end
+
+mutable struct g_ops
+    I::Vector{Int}
+    J::Vector{Int}
+    VQ::Vector{Float}
+    S::SparseMatrixCSC{Int, Float}
+    F::Vector{Float} 
+    Mlump::Vector{Float}
+    M::SparseMatrixCSC{Int, Float}
+    Kc::SparseMatrixCSC{Int, Float}
+end
+
 let
 
     #---- testing solutions ----#
@@ -85,6 +109,7 @@ let
 
     #--- interface info ---#
     Γ = partition_temp_cold(T[:,2], p, z)
+    Γ_prev = Γ
     Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
@@ -99,11 +124,16 @@ let
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     de = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
+
+
+    #TODO:initalize
+    get_temperate_ops(Γ, Nbasis, p, z, ϕ, Pc, α)
+    
     
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    VK, Ic, Jc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     
     # melting source term
     F = zeros(N)
@@ -158,7 +188,7 @@ let
 
     
     for i = 1:1000
-        (Γ, H, Pc) = timestep(H, Pc, Γ, params,
+        (Γ, Γ_prev, H, Pc) = timestep(H, Pc, Γ, Γ_prev, params,
                               c_ops, t_ops,
                               g_ops, Δt)
     end

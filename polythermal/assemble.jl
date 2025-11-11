@@ -409,7 +409,7 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     
 end
 
-function get_temperate_ops!(Ne, Nbasis, p, z, ϕ, Pc, α, t_ops)
+function get_temperate_ops!(Ne, new_elements, Nbasis, p, z, ϕ, Pc, α, t_ops)
 
     mt = t_ops.mt
     kt = t_ops.kt
@@ -419,10 +419,21 @@ function get_temperate_ops!(Ne, Nbasis, p, z, ϕ, Pc, α, t_ops)
     VMP = t_ops.VMP
     Fϕ = t_ops.Fϕ
 
+    @show new_elements
+    
+    if new_elements > 0
+        t_ops.NNZT[1] = length(VKϕ) + new_elements * (Nbasis^2 - 1)
+        VKϕ = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
+        VMϕ = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
+        VMP = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
+        Fϕ = zeros(length(Fϕ) + new_elements * (Nbasis - 1))
+    end
+    
     assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ, mt, VMϕ)
     assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)
     assemble_global_from_local_tensor!(Ne, Nbasis, p, Pc, mt, VMP)
     assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, de, Fϕ)
+    
     
 end
 
@@ -465,7 +476,8 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     # but we generated with indices starting at 0 in temperate region
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
-    return Vdiff, I, J
+    Kc = sparse(I,J, Vdiff, N,N)
+    return Kc
 end
 
 function get_advection_matrix(Ne, Nbasis, p, z, u, N)
