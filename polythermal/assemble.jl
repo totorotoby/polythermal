@@ -422,15 +422,26 @@ function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
     
 end
 
+function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
+    ϕ = ϕ .+ .000001
+    
+    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
+                                       ϕ.^(params.α), t_ops.kt, t_ops.Kϕ)
+    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
+                                       ϕ, t_ops.mt, t_ops.Mϕ)
+    assemble_global_vec_from_local_mat!(Γ, params.Nbasis, params.p,
+                                        ϕ.^(params.α), t_ops.dm, t_ops.Fϕ)
+end
+    
 function update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # reintegrate the compaction on the temperate side
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.mt,
                                        g_ops.Q)
     # add on the diffusion on the cold side
-    g_ops.Q += g_ops.Kc[Nt:end, Nt:end]
-    error()
+    g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
+
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)

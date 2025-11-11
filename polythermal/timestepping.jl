@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+function timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -23,12 +23,11 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     g = params.g
     κ = params.κ
     
-    Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
     
     #---- compaction pressure solve ----#
-
+    
     ϕ = get_porosity(H, 0.0)
     
     Kcomp, Mcomp,
@@ -58,8 +57,11 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
            Nt = Nt)
     
     # picard iterations
-    #A, R = picard!(H, ops, .0001, 3)
+    picard!(H, ops, .0001, 3)
 
+    plot!(H, z, label='H')
+    T = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T, p, z)
     # explicit (and stiff) solve
     #=
     ops = (Nt = Nt,
@@ -72,10 +74,13 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- new solver ---#
+    #display(Kcomp - t_ops.Kϕ[1:Nt, 1:Nt])
+    #display(Mcomp - t_ops.Mϕ[1:Nt, 1:Nt])
+    #display(Fcomp - t_ops.Fϕ[1:Nt])
     
-    solve_Pc!(Nt, Pc, params, t_ops)
-    update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
-    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
+    solve_Pc!(Nt, Pc1, params, t_ops)
+    update_Q!(Γ, Nt, Pc1, params, t_ops, g_ops)
+    picard!(H1, g_ops, Δt, Tsurf, Nt, .0001, 100)
     
     #=
     ops = (Nt = Nt,
@@ -90,15 +95,19 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     =#
 
     #--- re-partition ---#
-    T = get_temp(H, 0.0)
-    Γ = partition_temp_cold(T, p, z)
-    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    display(plot!(H[:], z, label="H"))
-    #display(plot!(T[:,1], z, label="T"))
-    #sleep(.05)
+    T = get_temp(H1, 0.0)
+    Γ1 = partition_temp_cold(T, p, z)
 
-    return (Γ, H, Pc)
+    ϕ1 = get_porosity(H1, 0.0)
+    update_ϕ_ops!(Γ, ϕ1, Nt, params, t_ops)
+
+    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
+    plot!(Pc1[1:Nt], z[1:Nt], label="Pc1")
+    display(plot!(H1[:], z, label="H1"))
+    #display(plot!(T[:,1], z, label="T"))
+    sleep(.02)
+
+    return (Γ, Γ1, H, H1, Pc, Pc1)
     
 end
 
@@ -226,9 +235,7 @@ function picard!(H, ops, tol, maxiter)
     enforce_dirchlet!(A, R, Tsurf, size(A)[1])
     enforce_dirchlet!(A, R, 0.0, Nt)
 
-    return A, R
-    
-    #H[:] .= A\R
+    H[:] .= A\R
 
     #iter = 0
 

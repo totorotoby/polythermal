@@ -62,7 +62,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 4
+    Ne = 32
     # basis order
     p = 2
     # number basis functions
@@ -89,28 +89,24 @@ let
     # initial enthalpy
     H = zeros(N)
     H[:] = initial_enth.(z)
-
-    # initial temperature data
-    T = zeros(N, 2)
-    T[:, 2] = initial_temp.(z)
-
-    # initial porosity    
-     ϕ = zeros(N)
-     ϕ[:] = initial_pore.(z)
-
+    H1 = zeros(N)
+    H1[:] = initial_enth.(z)
+    
     # compaction pressure
     Pc = zeros(N)
+    Pc1 = zeros(N)
 
     # advective cfl
     Δt = h/abs(u(1))
     #Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
 
     #--- interface info ---#
-    Γ = partition_temp_cold(T[:,2], p, z)
+    Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
     Γc = Ne - Γ
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
+    Γ1 = Γ
 
     nnzt = NNZ(Γ, Nbasis)
     nnz = NNZ(Ne, Nbasis)
@@ -123,6 +119,7 @@ let
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
 
+    ϕ = get_porosity(H, 0.0)
     Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
                                    ϕ, α, mt, kt, dm, It, Jt)
     
@@ -153,8 +150,8 @@ let
               g = g,
               κ = κ)
 
-    for i = 1:300
-        (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+    for i = 1:200
+        (Γ, Γ1, H, H1, Pc, Pc1) = timestep(H, H1, Pc, Pc1, Γ, Γ1, params, t_ops, g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
