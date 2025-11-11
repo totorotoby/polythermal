@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
+function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -39,7 +39,7 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
     R = κ * g .* Fcomp
     enforce_dirchlet!(A, R, Pcbase, 1)
     Pc[1:Nt] .= A\R
-    
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
     #--- solve for ethalpy ---#
     Q, S, M,
     Mlump, F = get_enth_ops(Ne, N, Γ,
@@ -47,6 +47,7 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
                             p, z, u, a,
                             Pc)
     
+
     ops = (Δt = Δt,
            F = F,
            M = M,
@@ -57,9 +58,8 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
            Nt = Nt)
     
     # picard iterations
-    picard!(H, ops, .0001, 3)
+    #A, R = picard!(H, ops, .0001, 3)
 
-    
     # explicit (and stiff) solve
     #=
     ops = (Nt = Nt,
@@ -72,30 +72,11 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- new solver ---#
-    #=
-    ϕ = get_porosity(H, 0.0)
-    new_elements = Γ - Γ_prev
-    get_temperate_ops!(Γ, new_elements, Nbasis, p, z, ϕ, Pc, α, t_ops)
-    if new_elements > 0
-        It, Jt = get_sparsity(Γ, t_ops.NNZT[1], Nbasis, p)
-        t_ops.It = It
-        t_ops.Jt = Jt
-    end
-    solve_Pc!(Nt, ϕ, Pc, params, t_ops)
-
-    Q = construct_Q(N, t_ops, c_ops, g_ops)
-
-    ops = (Δt = Δt,
-           F = g_ops.F,
-           M = g_ops.M,
-           Q = Q,
-           S = g_ops.S,
-           z = z,
-           Tsurf = Tsurf,
-           Nt = Nt)
     
-    # picard iterations
-    picard!(H, ops, .0001, 3)
+    solve_Pc!(Nt, Pc, params, t_ops)
+    update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
+    
     #=
     ops = (Nt = Nt,
            Q = Q,
@@ -107,10 +88,9 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
     
     #H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
-    =#
+
     #--- re-partition ---#
     T = get_temp(H, 0.0)
-    Γ_prev = Γ
     Γ = partition_temp_cold(T, p, z)
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
@@ -118,52 +98,23 @@ function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
     #display(plot!(T[:,1], z, label="T"))
     #sleep(.05)
 
-    return (Γ, Γ_prev, H, Pc)
+    return (Γ, H, Pc)
     
 end
 
-function construct_Q(N, t_ops, c_ops,  g_ops)
-
-    nnzt = t_ops.NNZT[1]
-    VK = c_ops.VK
-    VMP = t_ops.VMP
-    VQ = g_ops.VQ
-    I = g_ops.I
-    J = g_ops.J
-    nnz = length(I)
-    
-    nnzc = nnz - nnzt
-    #@show nnzc
-    
-    #VK = 
-    VQ[1:nnzt] .= VMP[:]
-    VQ[nnzt] += VK[1]
-    VQ[nnzt + 1: end] .= VK[2:end]
-    Q = sparse(I, J, VQ, N, N)
-
-    return Q
-    
-end
-
-function solve_Pc!(Nt, ϕ, Pc, params, t_ops)
+function solve_Pc!(Nt, Pc, params, t_ops)
 
     κ = params.κ
     δ = params.δ
     η = params.η
     g = params.g
     Pcbase = params.Pcbase
-        
-    It = t_ops.It
-    Jt = t_ops.Jt
-    VKϕ = t_ops.VKϕ
-    VMϕ = t_ops.VMϕ
-    VMP = t_ops.VMP
-    Fϕ = t_ops.Fϕ
 
-    Kϕα = sparse(It, Jt, VKϕ, Nt, Nt)
-    Mϕ = sparse(It, Jt, VMϕ, Nt, Nt)
-
-    A = -κ * δ .* Kϕα - 1/η .* Mϕ
+    Kϕ = @view t_ops.Kϕ[1:Nt, 1:Nt]
+    Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
+    Fϕ = @view t_ops.Fϕ[1:Nt]
+    
+    A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
     enforce_dirchlet!(A, R, Pcbase, 1)
     
@@ -233,6 +184,30 @@ function partition_temp_cold(T, p, z)
 end
 
 
+function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
+
+    M = g_ops.M
+    S = g_ops.S
+    Q = g_ops.Q
+    F = g_ops.F
+    
+    Hprev = copy(H)
+
+    A = (M + Δt/2 .* (S + Q))
+    R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
+    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+    enforce_dirchlet!(A, R, 0.0, Nt)
+
+    H[:] .= A\R
+    
+    #iter = 0
+
+    #while sum((H - Hprev).^2) > tol && iter < maxiter
+    #end
+    
+end
+
+
 function picard!(H, ops, tol, maxiter)
 
     Δt = ops.Δt
@@ -250,10 +225,12 @@ function picard!(H, ops, tol, maxiter)
     R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
     enforce_dirchlet!(A, R, Tsurf, size(A)[1])
     enforce_dirchlet!(A, R, 0.0, Nt)
-    
-    H[:] .= A\R
 
-    iter = 0
+    return A, R
+    
+    #H[:] .= A\R
+
+    #iter = 0
 
     #while sum((H - Hprev).^2) > tol && iter < maxiter
     #end

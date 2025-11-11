@@ -27,28 +27,6 @@ function gauss_integrate(element, p, type, funcs...)
     	            0.8611363115940526]
 
     end
-    #=    
-    # GLL from second to 5th order
-    elseif type == 2
-        if p == 1
-            weights = [1.0 1.0]
-            abscissa = [-1.0 1.0]
-        elseif p == 2
-            weights = [1/3 4/3 1/3]
-            abscissa = [-1.0 0.0 1.0]
-        elseif p == 3
-            weights = [1/6 5/6
-                       5/6 1/6]
-            abscissa = [-1.0 -0.4472135954999579
-                        0.4472135954999579 1.0]
-        elseif p == 4
-            weights = [1/10 49/90 32/45
-                       49/90 1/10]
-            abscissa = [-1.0 -0.6546536707079771 0.0
-                        -0.6546536707079771 1]
-        end
-    end
-        =#
         
     val = 0.0
     scale = (element[end] - element[1]) * .5
@@ -132,7 +110,7 @@ end
 Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
-function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V)
+function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Float64})
 
     c = 1
     for e in 1:Ne
@@ -148,6 +126,23 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V)
             c += 1
         end
         c -= 1
+    end
+end
+
+function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
+                                            M::SparseMatrixCSC{Float64, Int64})
+
+    for e in 1:Ne
+        idx=EToN(e, p)
+        glocal = @view g[idx]
+        # do flattened tensor multiple giving flattened local 2d matrix
+        k_e = t_e * glocal
+        k_e = reshape(k_e, (Nbasis,Nbasis))
+        for i in 1:Nbasis, j in 1:Nbasis
+            # at starting element add to last element index,
+            # because they are the same
+            M[idx[i], idx[j]] += k_e[i,j]
+        end
     end
 end
 
@@ -417,8 +412,7 @@ function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
     Fϕ = zeros(N)
 
     assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ, mt, VMϕ)
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)
-    #assemble_global_from_local_tensor!(Ne, Nbasis, p, Pc, mt, VMP)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)    
     assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, dm, Fϕ)
 
     Kϕ = sparse(It, Jt, VKϕ, N, N)
@@ -426,6 +420,17 @@ function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
 
     return Kϕ, Mϕ, Fϕ
     
+end
+
+
+function update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+
+    # reintegrate the compaction on the temperate side
+    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.mt,
+                                       g_ops.Q)
+    # add on the diffusion on the cold side
+    g_ops.Q += g_ops.Kc[Nt:end, Nt:end]
+    error()
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)

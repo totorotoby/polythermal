@@ -11,7 +11,6 @@ mutable struct tOps
     nnzt::Int64
     Kϕ::SparseMatrixCSC{Float64, Int64}
     Mϕ::SparseMatrixCSC{Float64, Int64}
-    MP::SparseMatrixCSC{Float64, Int64}
     Fϕ::Vector{Float64}
     mt::Matrix{Float64}
     kt::Matrix{Float64}
@@ -63,7 +62,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 32
+    Ne = 4
     # basis order
     p = 2
     # number basis functions
@@ -127,7 +126,7 @@ let
     Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
                                    ϕ, α, mt, kt, dm, It, Jt)
     
-    t_ops = tOps(nnzt, Kϕ, Mϕ, spzeros(N,N), Fϕ, mt, kt, dm)
+    t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm)
 
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
@@ -155,7 +154,7 @@ let
               κ = κ)
 
     for i = 1:300
-        (Γ, Γ_prev, H, Pc) = timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
+        (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)
