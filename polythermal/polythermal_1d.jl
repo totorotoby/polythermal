@@ -7,27 +7,26 @@ include("timestepping.jl")
 
 
 
-mutable struct t_ops
-    nnzt::Int
-    Kϕ::SparseMatrixCSC{Int, Float}
-    Mϕ::SparseMatrixCSC{Int, Float}
-    MP::SparseMatrixCSC{Int, Float}
-    Fϕ = Fϕ::Vector{Float}
-    mt::Matrix{Float}
-    kt::Matrix{Float}
-    de::Matrix{Float}
+mutable struct tOps
+    nnzt::Int64
+    Kϕ::SparseMatrixCSC{Float64, Int64}
+    Mϕ::SparseMatrixCSC{Float64, Int64}
+    MP::SparseMatrixCSC{Float64, Int64}
+    Fϕ::Vector{Float64}
+    mt::Matrix{Float64}
+    kt::Matrix{Float64}
+    dm::Matrix{Float64}
 end
 
-mutable struct g_ops
-    I::Vector{Int}
-    J::Vector{Int}
-    VQ::Vector{Float}
-    S::SparseMatrixCSC{Int, Float}
-    F::Vector{Float} 
-    Mlump::Vector{Float}
-    M::SparseMatrixCSC{Int, Float}
-    Kc::SparseMatrixCSC{Int, Float}
+mutable struct gOps
+    Q::SparseMatrixCSC{Float64, Int64}
+    S::SparseMatrixCSC{Float64, Int64}
+    F::Vector{Float64} 
+    Mlump::SparseMatrixCSC{Float64, Int64}
+    M::SparseMatrixCSC{Float64, Int64}
+    Kc::SparseMatrixCSC{Float64, Int64}
 end
+
 
 let
 
@@ -64,7 +63,7 @@ let
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 64
+    Ne = 32
     # basis order
     p = 2
     # number basis functions
@@ -123,30 +122,22 @@ let
     nodes = collect(0:he/p:he)
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
-    de = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
+    dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
 
+    Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
+                                   ϕ, α, mt, kt, dm, It, Jt)
+    
+    t_ops = tOps(nnzt, Kϕ, Mϕ, spzeros(N,N), Fϕ, mt, kt, dm)
 
-    #TODO:initalize
-    get_temperate_ops(Γ, Nbasis, p, z, ϕ, Pc, α)
-    
-    
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
     Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
-    
-    # melting source term
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
-    VKϕ = zeros(nnzt)
-    VMϕ = zeros(nnzt)
-    VMP = zeros(nnzt)
-    VQ = zeros(nnz)
-    Fϕ = zeros(Nt)
-    NNZT = zeros(Int, 1)
-    NNZT[1] = nnzt
-    
+    g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
+
     params = (N = N,
               Ne = Ne,
               Nbasis = Nbasis,
@@ -163,34 +154,8 @@ let
               g = g,
               κ = κ)
 
-    c_ops = (Ic = Ic,
-             Jc = Jc,
-             VK = VK)
-    
-    g_ops = (I = I,
-             J = J,
-             VQ = VQ,
-             S = S,
-             F = F,
-             Mlump = Mlump,
-             M = M)
-    
-    t_ops = (NNZT = NNZT,
-             It = It,
-             Jt = Jt,
-             VKϕ = VKϕ,
-             VMϕ = VMϕ,
-             VMP = VMP,
-             Fϕ = Fϕ,
-             mt = mt,
-             kt = kt,
-             de = de)
-
-    
-    for i = 1:1000
-        (Γ, Γ_prev, H, Pc) = timestep(H, Pc, Γ, Γ_prev, params,
-                              c_ops, t_ops,
-                              g_ops, Δt)
+    for i = 1:300
+        (Γ, Γ_prev, H, Pc) = timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
     end
 
     Γ_nodes = EToN(Γ, p)

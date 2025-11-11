@@ -409,31 +409,22 @@ function get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
     
 end
 
-function get_temperate_ops!(Ne, new_elements, Nbasis, p, z, ϕ, Pc, α, t_ops)
+function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
+                           ϕ, α, mt, kt, dm, It, Jt)
 
-    mt = t_ops.mt
-    kt = t_ops.kt
-    de = t_ops.de
-    VKϕ = t_ops.VKϕ
-    VMϕ = t_ops.VMϕ
-    VMP = t_ops.VMP
-    Fϕ = t_ops.Fϕ
+    VKϕ = zeros(nnzt)
+    VMϕ = zeros(nnzt)
+    Fϕ = zeros(N)
 
-    @show new_elements
-    
-    if new_elements > 0
-        t_ops.NNZT[1] = length(VKϕ) + new_elements * (Nbasis^2 - 1)
-        VKϕ = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
-        VMϕ = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
-        VMP = zeros(length(VKϕ) + new_elements * (Nbasis^2 - 1))
-        Fϕ = zeros(length(Fϕ) + new_elements * (Nbasis - 1))
-    end
-    
     assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ, mt, VMϕ)
     assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕ.^α, kt, VKϕ)
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, Pc, mt, VMP)
-    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, de, Fϕ)
-    
+    #assemble_global_from_local_tensor!(Ne, Nbasis, p, Pc, mt, VMP)
+    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕ.^α, dm, Fϕ)
+
+    Kϕ = sparse(It, Jt, VKϕ, N, N)
+    Mϕ = sparse(It, Jt, VMϕ, N, N)
+
+    return Kϕ, Mϕ, Fϕ
     
 end
 

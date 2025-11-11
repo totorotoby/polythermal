@@ -5,7 +5,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
+function timestep(H, Pc, Γ, Γ_prev, params, t_ops, g_ops, Δt)
 
     N = params.N
     Ne = params.Ne
@@ -28,7 +28,7 @@ function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
     Nt = Γ_nodes[end]
     
     #---- compaction pressure solve ----#
-    #=
+
     ϕ = get_porosity(H, 0.0)
     
     Kcomp, Mcomp,
@@ -58,7 +58,7 @@ function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
     
     # picard iterations
     picard!(H, ops, .0001, 3)
-    =#
+
     
     # explicit (and stiff) solve
     #=
@@ -72,7 +72,7 @@ function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
     H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
     #--- new solver ---#
-    
+    #=
     ϕ = get_porosity(H, 0.0)
     new_elements = Γ - Γ_prev
     get_temperate_ops!(Γ, new_elements, Nbasis, p, z, ϕ, Pc, α, t_ops)
@@ -107,11 +107,11 @@ function timestep(H, Pc, Γ, Γ_prev, params, c_ops, t_ops, g_ops, Δt)
     
     #H[:] = RK4(H, Δt, ops, enthalpy_rhs)
     =#
+    =#
     #--- re-partition ---#
     T = get_temp(H, 0.0)
     Γ_prev = Γ
     Γ = partition_temp_cold(T, p, z)
-    t_ops.NNZT[1] = NNZ(Γ, Nbasis)
     #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(H[:], z, label="H"))
