@@ -276,6 +276,10 @@ using a standard FEM discretization the enthalpy operators are:
   \\
   & a \approx \int_{\Omega} a\psi_i dz = F_a, ~~~ i = 1,...N \\
   \\
+  &\text{extra thermosyphon:}\\
+  &k_t(h(z_t, t) - T_{t}(z_t, t))\delta(z - z_t) = \int_\Omega\psi_i k_t(h - T_{t})\delta(z - z_t)dz = \int_\Omega\psi_i k_t(\sum_{j=1}^N\hat{h}\psi_j - T_{t})\delta(z - z_t)dz\\
+  &= (k_t\hat{u} - T_t)_i&
+  \\
   &\text{Compaction Pressure Operators}:\\
   \\
   &\pd{}{z}(\kappa\phi^\alpha(\rho_w - \rho)g) = \kappa(\rho_w - \rho)g\pd{\phi^\alpha}{z} \approx \kappa(\rho_w - \rho)g \int_\Omega\phi^\alpha\pd{\psi_i}{z} = \kappa\Delta\rho g F_{\phi^\alpha}, ~~~ i=1,...\Gamma_n(\hat{h})\\
@@ -345,8 +349,6 @@ Solve the entire enthalpy system implicitly (Crank–Nicolson), and picard itera
 \end{align*}
 
 Where we have to couple the compaction pressure to the iteration as well, because it influances $Q(\hat{h})$.
-
-
 
 \end{document}
 

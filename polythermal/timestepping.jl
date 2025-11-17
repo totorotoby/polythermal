@@ -20,9 +20,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # do enthalpy either implicitly
-    #picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
+    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
     # or explicitly
-    H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
+    #H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
     
     #--- re-partition ---#
     T = get_temp(H, 0.0)
@@ -31,9 +31,10 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     ϕ = get_porosity(H, 0.0)
     update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
-
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
+    #sleep(.05)
+    
     return (Γ, H, Pc)
     
 end
@@ -112,6 +113,7 @@ function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
     A = (M + Δt/2 .* (S + Q))
     R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
     enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+    #enforce_dirchlet!(A, R, .2, 1)
     enforce_dirchlet!(A, R, 0.0, Nt)
 
     H[:] .= A\R
