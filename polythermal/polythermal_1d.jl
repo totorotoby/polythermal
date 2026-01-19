@@ -6,7 +6,6 @@ include("assemble.jl")
 include("timestepping.jl")
 
 
-
 mutable struct tOps
     nnzt::Int64
     Kϕ::SparseMatrixCSC{Float64, Int64}
@@ -26,7 +25,6 @@ mutable struct gOps
     Kc::SparseMatrixCSC{Float64, Int64}
 end
 
-
 let
 
     #---- testing solutions ----#
@@ -41,7 +39,6 @@ let
 
     
     #---- physical parameters ----#
-    
     # velocity
     u(z) = -1.0
     # inverse peclet number
@@ -60,7 +57,8 @@ let
     η = 1.0
     
     #---- numerical parameters ----#
-    
+    # implicit or explict timestepping
+    implicit = true
     # number of elements
     Ne = 32
     # basis order
@@ -97,9 +95,12 @@ let
     Pc1 = zeros(N)
 
     # advective cfl
-    #Δt = h/abs(u(1))
-    Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
-
+    if implicit == true
+        Δt = h/(2*abs(u(1)))
+    else
+        Δt = min(h/abs(u(1)), (1/4) * h^2/κ)
+    end
+    @show Δt
     #--- interface info ---#
     Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
@@ -132,7 +133,8 @@ let
 
     g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
 
-    params = (N = N,
+    params = (implicit = implicit,
+              N = N,
               Ne = Ne,
               Nbasis = Nbasis,
               p = p,
@@ -148,7 +150,10 @@ let
               g = g,
               κ = κ)
 
-    for i = 1:18000
+    t_final = 1.5
+    tsteps = Int(ceil(t_final / Δt))
+    
+    for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     end
 
