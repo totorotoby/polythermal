@@ -47,7 +47,7 @@ let
     # inverse peclet number
     Pe_inv(z) = 1.0
     # dissipation rate
-    a(z) = 1.0
+    a(z) = .6
     # thermal conductivity
     κ = 1.0
     # gravitational acceleration
@@ -56,13 +56,13 @@ let
     α = 2.33
     # compaction parameter
     δ = 1.25e-2
-     # ice viscosity
+    # ice viscosity
     η = 1.0
     
     #---- numerical parameters ----#
     
     # number of elements
-    Ne = 32
+    Ne = 128
     # basis order
     p = 2
     # number basis functions
@@ -79,10 +79,12 @@ let
     # nodes
     z = collect(B:h:L)
     zfine = collect(B:h/2:L)
+
+    exp = false
     
     #---- initial and boundary data ----#
     # surface temperature
-    Tsurf = -.1
+    Tsurf = -.02
     # compaction pressure at the base
     Pcbase = 1.0
     
@@ -97,9 +99,12 @@ let
     Pc1 = zeros(N)
 
     # advective cfl
-    Δt = h/abs(u(1))
-    #Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
-
+    if exp == false
+        Δt = h/2*abs(u(1))
+    else
+        Δt = min(h/abs(u(1)), (1/3) * h^2/κ)
+    end
+    
     #--- interface info ---#
     Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
@@ -132,6 +137,10 @@ let
 
     g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
 
+    tDepth = 1
+    tVal = Tsurf
+    
+
     params = (N = N,
               Ne = Ne,
               Nbasis = Nbasis,
@@ -146,9 +155,12 @@ let
               α = α,
               η = η,
               g = g,
-              κ = κ)
+              κ = κ,
+              tDepth = tDepth,
+              tVal = tVal,
+              exp = exp)
 
-    for i = 1:200
+    for i = 1:420
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     end
 
@@ -157,6 +169,8 @@ let
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
+    @show Nt
+    @show H[N - tDepth]
 
     nothing
     

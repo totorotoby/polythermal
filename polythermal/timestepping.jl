@@ -10,6 +10,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     p = params.p
     Tsurf = params.Tsurf
     z = params.z
+    tDepth = params.tDepth
+    tVal = params.tVal
+    exp = params.exp
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
@@ -20,10 +23,12 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # do enthalpy either implicitly
-    picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
-    # or explicitly
-    #H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
-    
+    if exp == false
+        picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100, tDepth, tVal)
+    else
+        # or explicitly
+        H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
+    end
     #--- re-partition ---#
     T = get_temp(H, 0.0)
     Γ = partition_temp_cold(T, p, z)
@@ -33,7 +38,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(H[:], z, label="H"))
-    #sleep(.05)
+    sleep(.01)
     
     return (Γ, H, Pc)
     
@@ -101,16 +106,21 @@ function partition_temp_cold(T, p, z)
 end
 
 
-function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
+function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter, tDepth, tVal)
 
     M = g_ops.M
     S = g_ops.S
     Q = g_ops.Q
     F = g_ops.F
-    
+
     Hprev = copy(H)
 
+    t_idx = size(M)[1] - tDepth
+    F[t_idx] += tVal
+    
+
     A = (M + Δt/2 .* (S + Q))
+    #@show A[t_idx, t_idx]
     R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
     enforce_dirchlet!(A, R, Tsurf, size(A)[1])
     #enforce_dirchlet!(A, R, .2, 1)
