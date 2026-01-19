@@ -4,7 +4,7 @@ using DelimitedFiles
 
 include("assemble.jl")
 include("timestepping.jl")
-
+include("GLL.jl")
 
 mutable struct tOps
     nnzt::Int64
@@ -65,11 +65,11 @@ let
     
     #---- numerical parameters ----#
     # implicit or explict timestepping
-    implicit = true
+    implicit = false
     # number of elements
-    Ne = 32
+    Ne = 4
     # basis order
-    p = 2
+    p = 3
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -82,9 +82,9 @@ let
     # length of element
     he = (L-B)/Ne
     # nodes
-    z = get_mesh(Ne, Nbasis, N, he)
+    ref_nodes, weights = gll_nw(p)
+    z = get_mesh(Ne, p, L, N, he, ref_nodes)
     zfine = collect(B:h/2:L)
-    quit()
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1
@@ -121,7 +121,7 @@ let
     It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
-    nodes = collect(0:he/p:he)
+    nodes = z[1:8]
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -134,6 +134,9 @@ let
 
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
+    display(Mlump)
+    display(M)
+    quit()
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
     Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     F = zeros(N)
@@ -165,6 +168,8 @@ let
     
     for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+        plot(H, z, label='H')
+        display(plot!(Pc, z, label="Pc"))
     end
 
     plot(H, z, label='H')

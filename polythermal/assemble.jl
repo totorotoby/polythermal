@@ -4,28 +4,17 @@ using LinearAlgebra
 using Statistics
 using DataStructures
 
-lobatto_points = [-1.0,
-                  -0.6546536707079771,
-                  0,
-                  +0.6546536707079771,
-                  +1.0]
+
+function get_mesh(Ne, p, L, N, he, ref_nodes)
     
-lobatto_weights = [0.1,
-                   0.5444444444444444,
-                   0.7111111111111111,
-                   0.5444444444444444,
-                   0.1]
-
-function get_mesh(Ne, Nbasis, N, he)
-
     mesh = zeros(N)
-
-    bidx = 0
-    for e in 0:Ne
-        bidx = e*Nbasis
-        @show bidx
+    for e in 0:Ne-1
+        bidx = e*p
+        for i in 1:p
+            mesh[bidx + i] = (he*ref_nodes[i] + he*(e + 1) + he*e)/2
+        end
     end
-
+    mesh[end] = L
     return mesh
     
 end
@@ -40,34 +29,30 @@ function gauss_integrate(element, p, type, funcs...)
     weights = nothing
     # 4th Order normal gaussian
     if type == 1
-
-        
-        weights = [0.3626837833783620,
-	           0.3626837833783620,	
-	           0.3137066458778873,	
-	           0.3137066458778873,	
-	           0.2223810344533745,	
-	           0.2223810344533745,	
-	           0.1012285362903763,	
-	           0.1012285362903763]	
-
-        abscissa = [-0.1834346424956498,
-                    0.1834346424956498, 
-                    -0.5255324099163290,
-                    0.5255324099163290, 
-                    -0.7966664774136267,
-                    0.7966664774136267, 
-                    -0.9602898564975363,
-                    0.9602898564975363] 
-        
+        if p == 1
+            nodes = [-1.0, 1.0]
+            weights = [1.0, 1.0]
+        elseif p == 3
+            nodes = [-1, -0.4472136, 0.4472136, 1]
+            weights = [0.16666667, 0.83333333, 0.83333333, 0.16666667]
+        elseif p == 5
+            nodes = [-1,  -0.76505532, -0.28523152,  0.28523152,  0.76505532,  1]
+            weights = [0.06666667 0.37847496 0.55485838 0.55485838 0.37847496 0.06666667]
+        elseif p == 7
+            nodes = [-1, -0.87174015, -0.59170018, -0.20929922, 0.20929922, 0.59170018, 0.87174015, 1]
+            weights = [0.03571429, 0.21070423, 0.34112269, 0.41245879, 0.41245879, 0.34112269, 0.21070423, 0.03571429]
+        elseif  p == 9
+            nodes = [-1, -0.91953391, -0.73877387, -0.47792495, -0.16527896, 0.16527896, 0.47792495, 0.73877387, 0.91953391, 1]
+            weights = [0.02222222, 0.13330599, 0.22488934, 0.29204268, 0.32753976, 0.32753976 ,0.29204268, 0.22488934, 0.13330599, 0.02222222]
+        end
     end
         
     val = 0.0
     scale = (element[end] - element[1]) * .5
     c = (element[end] + element[1]) * .5
-    for l in 1:length(lobatto_weights)
-        val += lobatto_weights[l] * 
-            reduce(*, [f(scale * lobatto_points[l] + c) for f in funcs])
+    for l in 1:length(weights)
+        val += weights[l] * 
+            reduce(*, [f(scale * nodes[l] + c) for f in funcs])
     end
     return scale *  val
 end
