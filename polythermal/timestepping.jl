@@ -5,146 +5,92 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, T, ϕ, Pc, Γ, params, Δt)
+function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
-    N = params.N
-    Ne = params.Ne
-    Nbasis = params.Nbasis
     p = params.p
-    z = params.z
-    u = params.u
-    a = params.a
     Tsurf = params.Tsurf
-    Pcbase = params.Pcbase
-    Pe_inv = params.Pe_inv
-    δ = params.δ
-    α = params.α
-    η = params.η
-    g = params.g
-    κ = params.κ
-
+    ϕbase = params.ϕbase
+    z = params.z
+    inflow = params.inflow
+    implicit = params.implicit
+    
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
 
-    #---- compaction pressure solve ----#
-    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
-                                                       p + 1, p, z,
-                                                       ϕ, α)
+    #--- new solver ---#
+
+    solve_Pc!(Nt, Pc, params, t_ops)
+    update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+
+    # do enthalpy either implicitly
+    if implicit == true
+        picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, .0001, 100)
+    else
+        # or explicitly
+        H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
+    end
+        
+    #--- re-partition ---#
+    T = get_temp(H, 0.0)
+    Γ = partition_temp_cold(T, p, z)
     
-    A = -κ * δ .* Kcomp - 1/η .* Mcomp
-    R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 0)
+    ϕ = get_porosity(H, 0.0)
+    update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    # sovle BVP for compation pressure
-    Pc[1:Nt] .= A\R
+    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    #display(plot!(H[:], z, label="H"))
 
-    #--- solve for ethalpy ---#
-    Q, S, Mlump, F = get_enth_ops(Ne, N, Γ, Nt, Nbasis, p, z, u, a, Pc)
-
-    ops = (Nt = Nt,
-           Q = Q,
-           S = S,
-           Mlump = Mlump,
-           F = F,
-           Tsurf = Tsurf)
-
-    H[:] = RK4(H, Δt, ops, enthalpy_rhs)
-    
-    #---- Set up domains to solve on by partitioning ----#
-    # TODO: this is probably pretty memory inefficent and should be done with views, and rescaling of matrices
-    #---- get cold operators ----#
-    (K, S, M, F) = get_temperature_ops(Ne - Γ, Nbasis,
-                                       p, z, u, a, α)
-    #---- Temperature solve ----#
-    ### Crank-Nicolson for time discretization
-    A = M + Δt/2 .* (K + S)
-    # forcing term can be replaced with 2 time slices if variable (evolving velocity field)
-    R = (M - Δt/2 .* (K + S)) * T[Nt:end, 2] + Δt/2 .* (F + F)
-    # this is redundent computation after the first timestep...
-    enforce_dirchlet!(A, R, Tsurf, 1)
-    enforce_dirchlet!(A, R, 0, 0)
-    
-    # solve for next temperature
-    T[Nt:end,1] .= A\R
-    T[:, 2] .= T[:,1]
-
-    #=
-    #---- compaction pressure solve ----#
-    Kcomp, Mcomp, Fcomp, ϕαinterp = get_compaction_ops(Γ,
-                                                       p + 1, p, z,
-                                                       ϕ, α)
-    
-    A = -κ * δ .* Kcomp - 1/η .* Mcomp
-    R = κ * g .* Fcomp
-    enforce_dirchlet!(A, R, Pcbase, 0)
-
-    # sovle BVP for compation pressure
-    Pc[1:Nt] .= A\R
-    =#
-    #---- porosity solve ----#
-    Mlump, Mpc, Stemp, Ftemp = get_porosity_ops(Γ, p + 1, p, z[1:Nt], u, a, Pc[1:Nt])
-    
-    ops = (Nt = Nt,
-           Mlump = Mlump,
-           Stemp = Stemp,
-           Mpc = Mpc,
-           Ftemp = Ftemp)
-
-    ϕ[1:Nt] = RK4(ϕ[1:Nt,:], Δt, ops, porosity_rhs)
-
-    
-    #plot(ϕ[1:Nt], z[1:Nt], label="ϕ")
-    #plot!(Pc[1:Nt], z[1:Nt], label="Pc")
-    #plot!(H[:], z, label="H")
-    #display(plot!(T[:,1], z, label="T"))
-    #3sleep(.05)
-    # re-partition
-    return (partition_temp_cold(T[:, 1], p, z), H, T, ϕ, Pc)
+    return (Γ, H, Pc)
     
 end
 
-function porosity_rhs(ϕ, params)
+function solve_Pc!(Nt, Pc, params, t_ops)
 
-    Nt = params.Nt
-    Mlump = params.Mlump
-    Stemp = params.Stemp
-    Mpc = params.Mpc
-    Ftemp = params.Ftemp
+    κ = params.κ
+    δ = params.δ
+    η = params.η
+    g = params.g
+    Pcbase = params.Pcbase
 
-    # TODO: really need Pe_inv * Mpc but coded myself into a hole
-    RHS = Mlump * ((-Stemp - Mpc) * ϕ + Ftemp)
+    Kϕ = @view t_ops.Kϕ[1:Nt, 1:Nt]
+    Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
+    Fϕ = @view t_ops.Fϕ[1:Nt]
+    
+    A = -κ * δ .* Kϕ - 1/η .* Mϕ
+    R = κ * g .* Fϕ
+    enforce_dirchlet!(A, R, Pcbase, 1)
+
+    Pc[1:Nt] .= A\R
+    
+end
+
+#explict timestepping for enthalpy method
+function enthalpy_rhs(h, inflow, ϕbase, Nt, g_ops)
+
+    Q = g_ops.Q
+    S = g_ops.S
+    Mlump = g_ops.Mlump
+    F = g_ops.F
+
+    A = Mlump * (- S - Q)
+    RHS = A * h + Mlump * F
     RHS[end] = 0.0
+    if inflow == true
+        RHS[Nt] = 0.0
+    else
+        RHS[1] = ϕbase
+    end
+        
     return RHS
-
-end
-
-function enthalpy_rhs(h, params)
-
-    Nt = params.Nt
-    Q = params.Q
-    S = params.S
-    Mlump = params.Mlump
-    F = params.F
-    Tsurf = params.Tsurf
-    
-    # advection
-    RHS = Mlump * (-S * h - Q * h + F)
-    RHS[end] = Tsurf
-    RHS[Nt] = 0.0
-    
-    return RHS
-    
 end
 
 
-function RK4(u, Δt, params, rhs)
+function RK4(u, Δt, Nt, params, g_ops, rhs)
 
-    Nt = params.Nt
-    
-    k1 = Δt * rhs(u[:], params)
-    k2 = Δt * rhs(u[:] + k1/2, params)
-    k3 = Δt * rhs(u[:] + k2/2, params)
-    k4 = Δt * rhs(u[:] + k3, params)
+    k1 = Δt * rhs(u[:], params.inflow, params.ϕbase, Nt, g_ops)
+    k2 = Δt * rhs(u[:] + k1/2, params.inflow, params.ϕbase, Nt, g_ops)
+    k3 = Δt * rhs(u[:] + k2/2, params.inflow, params.ϕbase, Nt, g_ops)
+    k4 = Δt * rhs(u[:] + k3, params.inflow, params.ϕbase, Nt, g_ops)
 
     u_raw = u[:] + (k1 + 2k2 + 2k3 + k4) / 6
     u_smooth = Smoothing.binomial(u_raw, 1)
@@ -163,4 +109,30 @@ function partition_temp_cold(T, p, z)
     end
 end
 
+
+function picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, tol, maxiter)
+
+    M = g_ops.M
+    S = g_ops.S
+    Q = g_ops.Q
+    F = g_ops.F
+    
+    Hprev = copy(H)
+
+    A = (M + Δt/2 .* (S + Q))
+    R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
+    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+    if inflow == true
+        enforce_dirchlet!(A, R, 0.0, Nt)
+    else
+        enforce_dirchlet!(A, R, ϕbase, 1)
+    end
+    H[:] .= A\R
+    
+    #iter = 0
+
+    #while sum((H - Hprev).^2) > tol && iter < maxiter
+    #end
+    
+end
 
