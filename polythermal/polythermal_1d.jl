@@ -40,7 +40,7 @@ let
     
     #---- physical parameters ----#
     # inflow or outflow problem
-    inflow = false
+    inflow = true
     u(z) = nothing
     # velocity
     if inflow == true
@@ -82,9 +82,9 @@ let
     # length of element
     he = (L-B)/Ne
     # nodes
-    z = collect(B:h:L)
+    z = get_mesh(Ne, Nbasis, N, he)
     zfine = collect(B:h/2:L)
-    
+    quit()
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1

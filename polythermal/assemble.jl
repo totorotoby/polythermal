@@ -4,6 +4,31 @@ using LinearAlgebra
 using Statistics
 using DataStructures
 
+lobatto_points = [-1.0,
+                  -0.6546536707079771,
+                  0,
+                  +0.6546536707079771,
+                  +1.0]
+    
+lobatto_weights = [0.1,
+                   0.5444444444444444,
+                   0.7111111111111111,
+                   0.5444444444444444,
+                   0.1]
+
+function get_mesh(Ne, Nbasis, N, he)
+
+    mesh = zeros(N)
+
+    bidx = 0
+    for e in 0:Ne
+        bidx = e*Nbasis
+        @show bidx
+    end
+
+    return mesh
+    
+end
 
 #=
 gaussian integration of funcs multiplied together with args for each function
@@ -16,6 +41,7 @@ function gauss_integrate(element, p, type, funcs...)
     # 4th Order normal gaussian
     if type == 1
 
+        
         weights = [0.3626837833783620,
 	           0.3626837833783620,	
 	           0.3137066458778873,	
@@ -39,9 +65,9 @@ function gauss_integrate(element, p, type, funcs...)
     val = 0.0
     scale = (element[end] - element[1]) * .5
     c = (element[end] + element[1]) * .5
-    for l in 1:length(weights)
-        val += weights[l] * 
-            reduce(*, [f(scale * abscissa[l] + c) for f in funcs])
+    for l in 1:length(lobatto_weights)
+        val += lobatto_weights[l] * 
+            reduce(*, [f(scale * lobatto_points[l] + c) for f in funcs])
     end
     return scale *  val
 end
