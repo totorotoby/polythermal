@@ -39,8 +39,15 @@ let
 
     
     #---- physical parameters ----#
+    # inflow or outflow problem
+    inflow = false
+    u(z) = nothing
     # velocity
-    u(z) = -1.0
+    if inflow == true
+        u(z) = -1.0
+    else
+        u(z) = 1.0
+    end
     # inverse peclet number
     Pe_inv(z) = 1.0
     # dissipation rate
@@ -83,6 +90,8 @@ let
     Tsurf = -.1
     # compaction pressure at the base
     Pcbase = 1.0
+    # porosity base
+    ϕbase = .2
     
     # initial enthalpy
     H = zeros(N)
@@ -100,7 +109,6 @@ let
     else
         Δt = min(h/abs(u(1)), (1/4) * h^2/κ)
     end
-    @show Δt
     #--- interface info ---#
     Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
@@ -133,7 +141,8 @@ let
 
     g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
 
-    params = (implicit = implicit,
+    params = (inflow = inflow,
+              implicit = implicit,
               N = N,
               Ne = Ne,
               Nbasis = Nbasis,
@@ -143,6 +152,7 @@ let
               a = a,
               Tsurf = Tsurf,
               Pcbase = Pcbase,
+              ϕbase = ϕbase,
               Pe_inv = Pe_inv,
               δ = δ,
               α = α,

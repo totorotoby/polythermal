@@ -9,7 +9,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     p = params.p
     Tsurf = params.Tsurf
+    ϕbase = params.ϕbase
     z = params.z
+    inflow = params.inflow
     implicit = params.implicit
     
     Γ_nodes = EToN(Γ, p)
@@ -22,7 +24,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     # do enthalpy either implicitly
     if implicit == true
-        picard!(H, g_ops, Δt, Tsurf, Nt, .0001, 100)
+        picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, .0001, 100)
     else
         # or explicitly
         H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
@@ -63,7 +65,7 @@ function solve_Pc!(Nt, Pc, params, t_ops)
 end
 
 #explict timestepping for enthalpy method
-function enthalpy_rhs(h, Nt, g_ops)
+function enthalpy_rhs(h, inflow, ϕbase, Nt, g_ops)
 
     Q = g_ops.Q
     S = g_ops.S
@@ -73,18 +75,22 @@ function enthalpy_rhs(h, Nt, g_ops)
     A = Mlump * (- S - Q)
     RHS = A * h + Mlump * F
     RHS[end] = 0.0
-    RHS[Nt] = 0.0
-
+    if inflow == true
+        RHS[Nt] = 0.0
+    else
+        RHS[1] = ϕbase
+    end
+        
     return RHS
 end
 
 
 function RK4(u, Δt, Nt, params, g_ops, rhs)
-    
-    k1 = Δt * rhs(u[:], Nt, g_ops)
-    k2 = Δt * rhs(u[:] + k1/2, Nt, g_ops)
-    k3 = Δt * rhs(u[:] + k2/2, Nt, g_ops)
-    k4 = Δt * rhs(u[:] + k3, Nt, g_ops)
+
+    k1 = Δt * rhs(u[:], params.inflow, params.ϕbase, Nt, g_ops)
+    k2 = Δt * rhs(u[:] + k1/2, params.inflow, params.ϕbase, Nt, g_ops)
+    k3 = Δt * rhs(u[:] + k2/2, params.inflow, params.ϕbase, Nt, g_ops)
+    k4 = Δt * rhs(u[:] + k3, params.inflow, params.ϕbase, Nt, g_ops)
 
     u_raw = u[:] + (k1 + 2k2 + 2k3 + k4) / 6
     u_smooth = Smoothing.binomial(u_raw, 1)
@@ -104,7 +110,7 @@ function partition_temp_cold(T, p, z)
 end
 
 
-function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
+function picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, tol, maxiter)
 
     M = g_ops.M
     S = g_ops.S
@@ -116,8 +122,11 @@ function picard!(H, g_ops, Δt, Tsurf, Nt, tol, maxiter)
     A = (M + Δt/2 .* (S + Q))
     R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
     enforce_dirchlet!(A, R, Tsurf, size(A)[1])
-    enforce_dirchlet!(A, R, 0.0, Nt)
-
+    if inflow == true
+        enforce_dirchlet!(A, R, 0.0, Nt)
+    else
+        enforce_dirchlet!(A, R, ϕbase, 1)
+    end
     H[:] .= A\R
     
     #iter = 0
