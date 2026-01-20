@@ -19,6 +19,7 @@ function get_mesh(Ne, p, L, N, he, ref_nodes)
     
 end
 
+
 #=
 gaussian integration of funcs multiplied together with args for each function
 weights and abscissa pulled from: https://pomax.github.io/bezierinfo/legendre-gauss.html
@@ -27,27 +28,41 @@ element - list of at least the start and end nodes of the element to integrate o
 function gauss_integrate(element, p, type, funcs...)
 
     weights = nothing
-    # GLL
     if type == 1
-        nodes, weights = gausslobatto(p + 1)
-        #=
-        if p == 1
-            nodes = [-1.0, 1.0]
-            weights = [1.0, 1.0]
-        elseif p == 3
-            nodes = [-1, -0.4472136, 0.4472136, 1]
-            weights = [0.16666667, 0.83333333, 0.83333333, 0.16666667]
-        elseif p == 5
-            nodes = [-1,  -0.76505532, -0.28523152,  0.28523152,  0.76505532,  1]
-            weights = [0.06666667 0.37847496 0.55485838 0.55485838 0.37847496 0.06666667]
-        elseif p == 7
-            nodes = [-1, -0.87174015, -0.59170018, -0.20929922, 0.20929922, 0.59170018, 0.87174015, 1]
-            weights = [0.03571429, 0.21070423, 0.34112269, 0.41245879, 0.41245879, 0.34112269, 0.21070423, 0.03571429]
-        elseif  p == 9
-            nodes = [-1, -0.91953391, -0.73877387, -0.47792495, -0.16527896, 0.16527896, 0.47792495, 0.73877387, 0.91953391, 1]
-            weights = [0.02222222, 0.13330599, 0.22488934, 0.29204268, 0.32753976, 0.32753976 ,0.29204268, 0.22488934, 0.13330599, 0.02222222]
-        end
-        =#
+        weights = [ 0.1894506104550685,	
+                    0.1894506104550685,	
+                    0.1826034150449236,	
+                    0.1826034150449236,	
+                    0.1691565193950025,	
+                    0.1691565193950025,	
+                    0.1495959888165767,	
+                    0.1495959888165767,	
+                    0.1246289712555339,	
+                    0.1246289712555339,	
+                    0.0951585116824928,
+                    0.0951585116824928,	
+                    0.0622535239386479,	
+                    0.0622535239386479,	
+                    0.0271524594117541,	
+                    0.0271524594117541 ]
+
+
+        abscissa = [-0.0950125098376374,
+                    0.0950125098376374, 
+                    -0.2816035507792589,
+                    0.2816035507792589, 
+                    -0.4580167776572274,
+                    0.4580167776572274, 
+                    -0.6178762444026438,
+                    0.6178762444026438, 
+                    -0.7554044083550030,
+                    0.7554044083550030, 
+                    -0.8656312023878318,
+                    0.8656312023878318, 
+                    -0.9445750230732326,
+                    0.9445750230732326, 
+                    -0.9894009349916499,
+                    0.9894009349916499]
     end
         
     val = 0.0
@@ -55,7 +70,7 @@ function gauss_integrate(element, p, type, funcs...)
     c = (element[end] + element[1]) * .5
     for l in 1:length(weights)
         val += weights[l] * 
-            reduce(*, [f(scale * nodes[l] + c) for f in funcs])
+            reduce(*, [f(scale * abscissa[l] + c) for f in funcs])
     end
     return scale *  val
 end
@@ -258,6 +273,26 @@ end
 
 # basis function derivative
 dlb(x, j, nodes) = ForwardDiff.derivative(x -> lb(x, j, nodes), x)
+
+
+function interpolate_lagrangian_global(x_nodes, u_nodes, p, x_plot)
+    u_plot = zeros(length(x_plot))
+    
+    for (i, xp) in enumerate(x_plot)
+        e, local_nodes = XToN(xp, p, x_nodes)
+        
+        local_inds = EToN(e, p)
+        local_u = u_nodes[local_inds]
+        
+        val = 0.0
+        for j in 1:length(local_nodes)
+            val += local_u[j] * lb(xp, j, local_nodes)
+        end
+        u_plot[i] = val
+    end
+    
+    return u_plot
+end
 
 # p order lagrangian basis expansion with current coords at x
 function expansion(x, p, coords, n_global)

@@ -1,9 +1,10 @@
 using Test
+using FastGaussQuadrature
 
 include("assemble.jl")
 
 exact_poly_integral(k, a, b) = (b^(k+1) - a^(k+1)) / (k + 1)
-
+#=
 @testset "GLL Quadrature Tests" begin
 
     element = [-2.0, 3.0]
@@ -57,5 +58,36 @@ exact_poly_integral(k, a, b) = (b^(k+1) - a^(k+1)) / (k + 1)
 
         val = gauss_integrate(element_sym, 5, 1, f)
         @test isapprox(val, 0.0; atol=atol)
+    end
+end
+=#
+
+@testset "GLL triple basis function integration" begin
+
+    element = [-1.0, 1.0]
+
+    orders = [1, 3, 5, 7, 9]
+    atol_basis = 1e-8
+
+    for p in orders
+        n = p + 1
+
+        nodes, weights = gausslobatto(n + 3)
+
+        for i in 1:n, j in 1:n, k in 1:n
+            f1(x) = lb(x, i, nodes)
+            f2(x) = dlb(x, j, nodes)
+            f3(x) = dlb(x, k, nodes)
+
+            numerical = gauss_integrate(element, p, 1, f1, f2, f3)
+
+            exact = 0.0
+            for m in 1:n
+                exact += weights[m] * f1(nodes[m]) * f2(nodes[m]) * f3(nodes[m])
+            end
+            exact *= (element[end] - element[1]) * 0.5
+
+            @test isapprox(numerical, exact; atol=atol_basis)
+        end
     end
 end

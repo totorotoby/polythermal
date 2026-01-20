@@ -65,14 +65,14 @@ let
     η = 1.0
     
     #---- numerical parameters ----#
-    #GLL nodes
+    #GLL interp nodes
     GLL = true
     # implicit or explict timestepping
-    implicit = false
+    implicit = true
     # number of elements
     Ne = 32
     # basis order
-    p = 1
+    p = 6
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -80,15 +80,14 @@ let
     # domain boundarys [L, B]
     L = 1.0
     B = 0
-    # length between nodes
-    h = (L-B)/(N-1)
     # length of element
     he = (L-B)/Ne
     # nodes
-    ref_nodes, weights = gausslobatto(p + 1)
-    display(ref_nodes)
+    ref_nodes, weights = gausslobatto(Nbasis)
     z = get_mesh(Ne, p, L, N, he, ref_nodes)
-    zfine = collect(B:h/2:L)
+    # minimum element size
+    hmin = z[2] - z[1]
+    zfine = collect(B:hmin/3:L)
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1
@@ -108,9 +107,9 @@ let
 
     # advective cfl
     if implicit == true
-        Δt = h/(2*abs(u(1)))
+        Δt = he/(2*abs(u(1)))
     else
-        Δt = min(h/abs(u(1)), (1/4) * h^2/κ)
+        Δt = min(he/abs(u(1)), (1/4) * he^2/κ)
     end
     
     #--- interface info ---#
@@ -175,7 +174,7 @@ let
     t_final = 1.5
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:1
+    for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))
