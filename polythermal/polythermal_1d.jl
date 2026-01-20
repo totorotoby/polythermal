@@ -1,10 +1,11 @@
 using Printf
 using Plots
 using DelimitedFiles
+using FastGaussQuadrature
 
 include("assemble.jl")
 include("timestepping.jl")
-
+include("GLL.jl")
 
 mutable struct tOps
     nnzt::Int64
@@ -40,7 +41,7 @@ let
     
     #---- physical parameters ----#
     # inflow or outflow problem
-    inflow = false
+    inflow = true
     u(z) = nothing
     # velocity
     if inflow == true
@@ -64,12 +65,14 @@ let
     η = 1.0
     
     #---- numerical parameters ----#
+    #GLL interp nodes
+    GLL = true
     # implicit or explict timestepping
     implicit = true
     # number of elements
     Ne = 32
     # basis order
-    p = 2
+    p = 6
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -77,14 +80,14 @@ let
     # domain boundarys [L, B]
     L = 1.0
     B = 0
-    # length between nodes
-    h = (L-B)/(N-1)
     # length of element
     he = (L-B)/Ne
     # nodes
-    z = collect(B:h:L)
-    zfine = collect(B:h/2:L)
-    
+    ref_nodes, weights = gausslobatto(Nbasis)
+    z = get_mesh(Ne, p, L, N, he, ref_nodes)
+    # minimum element size
+    hmin = z[2] - z[1]
+    zfine = collect(B:hmin/3:L)
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1
@@ -101,14 +104,14 @@ let
     
     # compaction pressure
     Pc = zeros(N)
-    Pc1 = zeros(N)
 
     # advective cfl
     if implicit == true
-        Δt = h/(2*abs(u(1)))
+        Δt = he/(2*abs(u(1)))
     else
-        Δt = min(h/abs(u(1)), (1/4) * h^2/κ)
+        Δt = min(he/abs(u(1)), (1/4) * he^2/κ)
     end
+    
     #--- interface info ---#
     Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
@@ -121,7 +124,15 @@ let
     It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
-    nodes = collect(0:he/p:he)
+    nodes = z[1:p+1]
+    fine = 0:.00001:nodes[end]
+    #=
+    p1 = plot()
+    for i in 1:p+1
+        p1 = plot!(fine, [lb(f, i, nodes) for f in fine])
+    end
+    display(p1)
+    =#
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -129,7 +140,7 @@ let
     ϕ = get_porosity(H, 0.0)
     Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
                                    ϕ, α, mt, kt, dm, It, Jt)
-    
+
     t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm)
 
     # static global operators
@@ -165,6 +176,8 @@ let
     
     for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+        #plot(H, z, label='H')
+        #display(plot!(Pc, z, label="Pc"))
     end
 
     plot(H, z, label='H')

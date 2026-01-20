@@ -3,6 +3,21 @@ using SparseArrays
 using LinearAlgebra
 using Statistics
 using DataStructures
+using FastGaussQuadrature
+
+function get_mesh(Ne, p, L, N, he, ref_nodes)
+    
+    mesh = zeros(N)
+    for e in 0:Ne-1
+        bidx = e*p
+        for i in 1:p
+            mesh[bidx + i] = (he*ref_nodes[i] + he*(e + 1) + he*e)/2
+        end
+    end
+    mesh[end] = L
+    return mesh
+    
+end
 
 
 #=
@@ -13,27 +28,41 @@ element - list of at least the start and end nodes of the element to integrate o
 function gauss_integrate(element, p, type, funcs...)
 
     weights = nothing
-    # 4th Order normal gaussian
     if type == 1
+        weights = [ 0.1894506104550685,	
+                    0.1894506104550685,	
+                    0.1826034150449236,	
+                    0.1826034150449236,	
+                    0.1691565193950025,	
+                    0.1691565193950025,	
+                    0.1495959888165767,	
+                    0.1495959888165767,	
+                    0.1246289712555339,	
+                    0.1246289712555339,	
+                    0.0951585116824928,
+                    0.0951585116824928,	
+                    0.0622535239386479,	
+                    0.0622535239386479,	
+                    0.0271524594117541,	
+                    0.0271524594117541 ]
 
-        weights = [0.3626837833783620,
-	           0.3626837833783620,	
-	           0.3137066458778873,	
-	           0.3137066458778873,	
-	           0.2223810344533745,	
-	           0.2223810344533745,	
-	           0.1012285362903763,	
-	           0.1012285362903763]	
 
-        abscissa = [-0.1834346424956498,
-                    0.1834346424956498, 
-                    -0.5255324099163290,
-                    0.5255324099163290, 
-                    -0.7966664774136267,
-                    0.7966664774136267, 
-                    -0.9602898564975363,
-                    0.9602898564975363] 
-        
+        abscissa = [-0.0950125098376374,
+                    0.0950125098376374, 
+                    -0.2816035507792589,
+                    0.2816035507792589, 
+                    -0.4580167776572274,
+                    0.4580167776572274, 
+                    -0.6178762444026438,
+                    0.6178762444026438, 
+                    -0.7554044083550030,
+                    0.7554044083550030, 
+                    -0.8656312023878318,
+                    0.8656312023878318, 
+                    -0.9445750230732326,
+                    0.9445750230732326, 
+                    -0.9894009349916499,
+                    0.9894009349916499]
     end
         
     val = 0.0
@@ -244,6 +273,26 @@ end
 
 # basis function derivative
 dlb(x, j, nodes) = ForwardDiff.derivative(x -> lb(x, j, nodes), x)
+
+
+function interpolate_lagrangian_global(x_nodes, u_nodes, p, x_plot)
+    u_plot = zeros(length(x_plot))
+    
+    for (i, xp) in enumerate(x_plot)
+        e, local_nodes = XToN(xp, p, x_nodes)
+        
+        local_inds = EToN(e, p)
+        local_u = u_nodes[local_inds]
+        
+        val = 0.0
+        for j in 1:length(local_nodes)
+            val += local_u[j] * lb(xp, j, local_nodes)
+        end
+        u_plot[i] = val
+    end
+    
+    return u_plot
+end
 
 # p order lagrangian basis expansion with current coords at x
 function expansion(x, p, coords, n_global)

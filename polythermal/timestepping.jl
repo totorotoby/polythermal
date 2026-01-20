@@ -13,10 +13,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     z = params.z
     inflow = params.inflow
     implicit = params.implicit
-    
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
-
+    
     #--- new solver ---#
 
     solve_Pc!(Nt, Pc, params, t_ops)
@@ -41,7 +40,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     #display(plot!(H[:], z, label="H"))
 
     return (Γ, H, Pc)
-    
+
 end
 
 function solve_Pc!(Nt, Pc, params, t_ops)
@@ -55,6 +54,8 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     Kϕ = @view t_ops.Kϕ[1:Nt, 1:Nt]
     Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
     Fϕ = @view t_ops.Fϕ[1:Nt]
+
+    
     
     A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
