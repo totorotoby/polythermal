@@ -64,12 +64,14 @@ let
     η = 1.0
     
     #---- numerical parameters ----#
+    #GLL nodes
+    GLL = true
     # implicit or explict timestepping
     implicit = false
     # number of elements
     Ne = 32
     # basis order
-    p = 7
+    p = 1
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -101,7 +103,6 @@ let
     
     # compaction pressure
     Pc = zeros(N)
-    Pc1 = zeros(N)
 
     # advective cfl
     if implicit == true
@@ -123,18 +124,12 @@ let
     
     # element tensor matrix used to assemble coupled matrices
     nodes = z[1:p+1]
-    fine = 0:.0001:he
-    #=
-    plot(fine, [lb(f, 1, nodes) for f in fine])
-    plot!(fine, [lb(f, 2, nodes) for f in fine])
-    plot!(fine, [lb(f, 3, nodes) for f in fine])
-    plot!(fine, [lb(f, 4, nodes) for f in fine])
-    plot!(fine, [lb(f, 5, nodes) for f in fine])
-    plot!(fine, [lb(f, 6, nodes) for f in fine])
-    plot!(fine, [lb(f, 7, nodes) for f in fine])
-    display(plot!(fine, [lb(f, 8, nodes) for f in fine]))
-    quit()
-    =#
+    fine = 0:.00001:nodes[end]
+    p1 = plot()
+    for i in 1:p+1
+        p1 = plot!(fine, [lb(f, i, nodes) for f in fine])
+    end
+    display(p1)
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -178,12 +173,12 @@ let
     
     for i = 1:2#tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
-        plot(H, z, label='H')
-        display(plot!(Pc, z, label="Pc"))
+        #plot(H, z, label='H')
+        #display(plot!(Pc, z, label="Pc"))
     end
 
-    plot(H, z, label='H')
-    display(plot!(Pc, z, label="Pc"))
+    #plot(H, z, label='H')
+    #display(plot!(Pc, z, label="Pc"))
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]

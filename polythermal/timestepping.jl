@@ -20,6 +20,8 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     #--- new solver ---#
 
     solve_Pc!(Nt, Pc, params, t_ops)
+    #display(plot(Pc, z, label="Pc"))
+    #=
     update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # do enthalpy either implicitly
@@ -41,7 +43,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     #display(plot!(H[:], z, label="H"))
 
     return (Γ, H, Pc)
-    
+    =#
 end
 
 function solve_Pc!(Nt, Pc, params, t_ops)
