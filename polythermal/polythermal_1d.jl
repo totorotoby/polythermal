@@ -67,9 +67,9 @@ let
     # implicit or explict timestepping
     implicit = false
     # number of elements
-    Ne = 4
+    Ne = 32
     # basis order
-    p = 3
+    p = 7
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -109,6 +109,7 @@ let
     else
         Δt = min(h/abs(u(1)), (1/4) * h^2/κ)
     end
+    
     #--- interface info ---#
     Γ = partition_temp_cold(H, p, z)
     Γ_prev = Γ
@@ -121,7 +122,19 @@ let
     It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
     
     # element tensor matrix used to assemble coupled matrices
-    nodes = z[1:8]
+    nodes = z[1:p+1]
+    fine = 0:.0001:he
+    #=
+    plot(fine, [lb(f, 1, nodes) for f in fine])
+    plot!(fine, [lb(f, 2, nodes) for f in fine])
+    plot!(fine, [lb(f, 3, nodes) for f in fine])
+    plot!(fine, [lb(f, 4, nodes) for f in fine])
+    plot!(fine, [lb(f, 5, nodes) for f in fine])
+    plot!(fine, [lb(f, 6, nodes) for f in fine])
+    plot!(fine, [lb(f, 7, nodes) for f in fine])
+    display(plot!(fine, [lb(f, 8, nodes) for f in fine]))
+    quit()
+    =#
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -134,9 +147,6 @@ let
 
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
-    display(Mlump)
-    display(M)
-    quit()
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
     Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     F = zeros(N)
@@ -166,7 +176,7 @@ let
     t_final = 1.5
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:tsteps
+    for i = 1:2#tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         plot(H, z, label='H')
         display(plot!(Pc, z, label="Pc"))

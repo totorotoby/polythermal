@@ -3,7 +3,7 @@ using SparseArrays
 using LinearAlgebra
 using Statistics
 using DataStructures
-
+using FastGaussQuadrature
 
 function get_mesh(Ne, p, L, N, he, ref_nodes)
     
@@ -27,8 +27,10 @@ element - list of at least the start and end nodes of the element to integrate o
 function gauss_integrate(element, p, type, funcs...)
 
     weights = nothing
-    # 4th Order normal gaussian
+    # GLL
     if type == 1
+        nodes, weights = gausslobatto(p + 1)
+        #=
         if p == 1
             nodes = [-1.0, 1.0]
             weights = [1.0, 1.0]
@@ -45,6 +47,7 @@ function gauss_integrate(element, p, type, funcs...)
             nodes = [-1, -0.91953391, -0.73877387, -0.47792495, -0.16527896, 0.16527896, 0.47792495, 0.73877387, 0.91953391, 1]
             weights = [0.02222222, 0.13330599, 0.22488934, 0.29204268, 0.32753976, 0.32753976 ,0.29204268, 0.22488934, 0.13330599, 0.02222222]
         end
+        =#
     end
         
     val = 0.0
