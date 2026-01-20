@@ -1,6 +1,7 @@
 using Printf
 using Plots
 using DelimitedFiles
+using FastGaussQuadrature
 
 include("assemble.jl")
 include("timestepping.jl")
@@ -84,7 +85,8 @@ let
     # length of element
     he = (L-B)/Ne
     # nodes
-    ref_nodes, weights = gll_nw(p)
+    ref_nodes, weights = gausslobatto(p + 1)
+    display(ref_nodes)
     z = get_mesh(Ne, p, L, N, he, ref_nodes)
     zfine = collect(B:h/2:L)
     #---- initial and boundary data ----#
@@ -125,11 +127,13 @@ let
     # element tensor matrix used to assemble coupled matrices
     nodes = z[1:p+1]
     fine = 0:.00001:nodes[end]
+    #=
     p1 = plot()
     for i in 1:p+1
         p1 = plot!(fine, [lb(f, i, nodes) for f in fine])
     end
     display(p1)
+    =#
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -137,7 +141,7 @@ let
     ϕ = get_porosity(H, 0.0)
     Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
                                    ϕ, α, mt, kt, dm, It, Jt)
-    
+
     t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm)
 
     # static global operators
@@ -171,14 +175,14 @@ let
     t_final = 1.5
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:2#tsteps
+    for i = 1:1
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))
     end
 
-    #plot(H, z, label='H')
-    #display(plot!(Pc, z, label="Pc"))
+    plot(H, z, label='H')
+    display(plot!(Pc, z, label="Pc"))
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]
