@@ -5,7 +5,6 @@ using FastGaussQuadrature
 
 include("assemble.jl")
 include("timestepping.jl")
-include("GLL.jl")
 
 mutable struct tOps
     nnzt::Int64
