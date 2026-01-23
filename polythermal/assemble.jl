@@ -192,7 +192,7 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
 end
 
 
-function assemble_interface!(Γ, H, z, Nbasis, p, Pc, mt, Q)
+function assemble_interface!(Γ, H, z, κ, Nbasis, p, Pc, mt, Q)
 
     Γ_nodes = EToN(Γ, p)
     z_nodes = EToX(Γ, p, z)
@@ -203,23 +203,22 @@ function assemble_interface!(Γ, H, z, Nbasis, p, Pc, mt, Q)
     Δz = ze - zb
     h_frac = (0 - H[nb])/(H[ne] - H[nb])
     Γ_interior = zb + h_frac * Δz
-    
-    
-    
-    for i in 1:Nbasis, j in 1:Nbasis
-        v = gauss_integrate([zb, Γ_interior],
-                            p,
-                            1,
-                            z -> lb(z, i, z_nodes),
-                            z -> lb(z, j, z_nodes),
-                            Val -> expansion(Val, p, Pc, z))
-        
-    end
-    
+
     @show Γ_interior
-    @show z[nb], z[ne]
-    quit()
-    
+    for i in 1:Nbasis, j in 1:Nbasis
+        Q[Γ_nodes[i], Γ_nodes[j]] += gauss_integrate([zb, Γ_interior],
+                                                     p,
+                                                     1,
+                                                     z -> lb(z, i, z_nodes),
+                                                     z -> lb(z, j, z_nodes),
+                                                     Val -> expansion(Val, p, Pc, z))
+        Q[Γ_nodes[i], Γ_nodes[j]] += κ * gauss_integrate([Γ_interior, ze],
+                                                         p,
+                                                         1,
+                                                         z -> dlb(z, i, z_nodes),
+                                                         z -> dlb(z, j, z_nodes),
+                                                         one)
+    end
     
 end
 
@@ -397,18 +396,17 @@ end
 function update_Q!(H, Γ, Nt, Pc, params, t_ops, g_ops)
 
     #split element integration
-    assemble_interface!(Γ, H, params.z, params.Nbasis,
+    assemble_interface!(Γ, H, params.z, params.κ, params.Nbasis,
                         params.p, Pc, t_ops.mt,
                         g_ops.Q)
-    
+
     # reintegrate the compaction on the temperate side
-    assemble_global_from_local_tensor!(Γ, params.Nbasis,
+    assemble_global_from_local_tensor!(Γ-1, params.Nbasis,
                                        params.p, Pc, t_ops.mt,
                                        g_ops.Q)
-    
+
     # add on the diffusion on the cold side
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
-
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)
@@ -435,7 +433,7 @@ function get_lumped_mass(Ne, Nbasis, p, z, N)
     return Mlump, M
 end
     
-function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+function get_diffusion_matrix(Γc, Nt, Nbasis, p, κ, z, N)
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
@@ -445,6 +443,7 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
                      I, J, Vdiff)
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
+    Vdiff = κ * Vdiff
     Kc = sparse(I,J, Vdiff, N,N)
     return Kc
 end

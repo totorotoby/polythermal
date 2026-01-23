@@ -28,25 +28,9 @@ end
 
 let
 
-    #---- testing solutions ----#
-    # solution to steady BVP for temperature
-    cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
-        (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
-    
-    s(t) = 3t^2 - 2t^3
-    inflow = false
-    initial_enth(z) = nothing
-    if inflow == true
-        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
-    else
-        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.4 * (z - .5)
-    end
-    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
-
-    
     #---- physical parameters ----#
     # inflow or outflow problem
-
+    inflow = false
     u(z) = nothing
     # velocity
     if inflow == true
@@ -59,7 +43,11 @@ let
     # dissipation rate
     a(z) = 1.0
     # thermal conductivity
-    κ = 1.0
+    if inflow == true
+        κ = 1.0
+    else
+        κ = .25
+    end
     # gravitational acceleration
     g = -1.0
     # carman-kozeny exponent
@@ -95,12 +83,30 @@ let
     zfine = collect(B:hmin/3:L)
     #---- initial and boundary data ----#
     # surface temperature
-    Tsurf = -.1
+    if inflow == true
+        Tsurf = -.1
+    else
+        Tsurf = -.5
+    end
     # compaction pressure at the base
     Pcbase = 1.0
     # porosity base
     ϕbase = .2
+
+    # solution to steady BVP for temperature
+    cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
+        (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
     
+    # initial condition
+    s(t) = 3t^2 - 2t^3
+    initial_enth(z) = nothing
+    if inflow == true
+        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    else
+        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.4 * (z - .5)
+    end
+    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
+
     # initial enthalpy
     H = zeros(N)
     H[:] = initial_enth.(z)
@@ -152,7 +158,7 @@ let
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+    Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, κ, z, N)
     F = zeros(N)
     assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
 
@@ -180,10 +186,11 @@ let
     t_final = 10
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:tsteps
+    for i = 1:10
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         plot(H, z, label='H')
         display(plot!(Pc, z, label="Pc"))
+        sleep(1)
         #@show Γ
     end
 
