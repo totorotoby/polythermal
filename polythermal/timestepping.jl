@@ -18,7 +18,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     
     #--- new solver ---#
 
-    solve_Pc!(Nt, Pc, params, t_ops)
+    solve_Pc!(Nt-1, Pc, params, t_ops)
     update_Q!(H, Γ, Nt, Pc, params, t_ops, g_ops)
 
     # do enthalpy either implicitly

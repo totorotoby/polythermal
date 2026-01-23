@@ -186,11 +186,11 @@ let
     t_final = 10
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:10
+    for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         plot(H, z, label='H')
         display(plot!(Pc, z, label="Pc"))
-        sleep(1)
+        #sleep(1)
         #@show Γ
     end
 
