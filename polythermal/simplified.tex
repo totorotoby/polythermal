@@ -52,7 +52,7 @@
 \newcommand{\spword}[1]{ \ \ \ \mbox{ {#1} } \ \ \ }
 
 \begin{document}
-\title{Polythermal Equation Solution methods}
+\title{Polythermal Equations notes}
 \author{Toby Harvey}
 \maketitle
 \vspace{-1cm}
@@ -225,17 +225,31 @@ Since diffusion only occurs in the cold domain, and porosity only effects the te
     \frac{hp_e}{\eta}, & h \geq h_{melt}
   \end{cases}\\
   \\
-  &\text{Initial and Boundary Conditions:}\\
-  &h(z, 0) = I(z)\\
+  &\text{Compaction Pressure Equation:}\\
+  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta}\\\\
+  &\text{Initial Conditions:}\\
+  &h(z, 0) = I(z)\\\\
+  &\text{cold } \rightarrow \text{ temperate: }\\
   &h(S, t) = T_{surf}\\
   &h(\Gamma(t), t) = 0\\
-  \\
-  &\text{Compaction Pressure Equation:}\\
-  &\pd{}{z}\left(\kappa\phi^\alpha\left((\rho_w - \rho)g + \pd{}{z}p_e\right)\right) = \frac{\phi p_e}{\eta}\\
-  &\text{Boundary Conditions:}\\
+  &p_e(0,t) = N_0\\
+  &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\\\
+  &\text{temperate } \rightarrow \text{ cold: }\\
+  &h(S, t) = T_{surf}\\
+  &h(0, t) = \phi_0\\
   &p_e(0,t) = N_0\\
   &\left(\kappa \phi^\alpha\left( (\rho_w - \rho)g + \pd{}{z} p_e\right)\right)\bigg\rvert_{z=\Gamma, t=t} = 0\\
 \end{align*}
+
+In the temperate to cold problem the interface obeys the stephan condition:
+
+\begin{align*}
+  \rho L \phi(u - v) = - k \pd{T}{x}
+\end{align*}
+
+Where $v$ is the interface speed. This is hidden within the enthalpy formulation but see your own polar class notes to see it.
+
+\vspace{5mm}
 
 This can be compared to Ashwanden (2012) which is:
 
@@ -285,7 +299,22 @@ using a standard FEM discretization the enthalpy operators are:
   &\frac{\phi p_e}{\eta} \approx \sum_{j=1}^N\int_{\Omega}\psi_i \frac{(\hat{\phi}_j\psi_j)}{\eta}\psi_j dz \hat{p}_{e,j} = M_{\phi} \hat{p_e} , ~~~ i=1,...\Gamma_n(\hat{h})
 \end{align*}
 
-Where $\Gamma_n$ is the node where the cold/temperate boundary is. With these operators the enthalpy equation becomes:
+
+Where $\Gamma_n$ is the node where the cold/temperate boundary is.
+
+\vspace{3mm}
+
+Inorder to enforce better local conservation of enthalpy at the interface split the interface element:
+
+\begin{align*}
+  &\text{Find: } h_k < h_{melt} < h_{k+1}\\
+  &\text{Linear interpolation for interface: } \Gamma(t) = z_k + \frac{h_{melt} - h_k}{h_{k+1} - h_{k}}(z_{k+1} - z_k)\\
+  &\text{Split integral: } \int_{z_k}^{z_{k+1}}\psi_i Q(h)dz = \int_{z_k}^{\Gamma(t)}\psi_i \frac{p_e}{\eta}\psi_jdz + \int_{\Gamma(t)}^{z_{k+1}}\pd{\psi_i}{x}k\pd{\psi_j}{x}dz
+\end{align*}
+
+Subtle and a little confusing but this isn't smearing because the quadtrature sets where we are evaling the basis functions.
+
+With these operators the enthalpy equation becomes:
 
 \begin{align*}
   M\pd{\hat{h}}{t} + S\hat{h} + Q(\hat{h})\hat{h} - F_a = 0

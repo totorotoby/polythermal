@@ -5,7 +5,7 @@ using FastGaussQuadrature
 
 include("assemble.jl")
 include("timestepping.jl")
-include("GLL.jl")
+#include("GLL.jl")
 
 mutable struct tOps
     nnzt::Int64
@@ -34,14 +34,19 @@ let
         (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
     
     s(t) = 3t^2 - 2t^3
-    initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    inflow = false
+    initial_enth(z) = nothing
+    if inflow == true
+        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    else
+        initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.4 * (z - .5)
+    end
     initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
-    initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
 
     
     #---- physical parameters ----#
     # inflow or outflow problem
-    inflow = true
+
     u(z) = nothing
     # velocity
     if inflow == true
@@ -70,9 +75,9 @@ let
     # implicit or explict timestepping
     implicit = true
     # number of elements
-    Ne = 32
+    Ne = 64
     # basis order
-    p = 6
+    p = 2
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -108,6 +113,7 @@ let
     # advective cfl
     if implicit == true
         Δt = he/(2*abs(u(1)))
+        Δt = min(he/abs(u(1)), (1/4) * he^2/κ)
     else
         Δt = min(he/abs(u(1)), (1/4) * he^2/κ)
     end
@@ -171,16 +177,17 @@ let
               g = g,
               κ = κ)
 
-    t_final = 1.5
+    t_final = 10
     tsteps = Int(ceil(t_final / Δt))
     
     for i = 1:tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
-        #plot(H, z, label='H')
-        #display(plot!(Pc, z, label="Pc"))
+        plot(H, z, label='H')
+        display(plot!(Pc, z, label="Pc"))
+        #@show Γ
     end
 
-    plot(H, z, label='H')
+    display(plot(H, z, label='H'))
     display(plot!(Pc, z, label="Pc"))
     
     Γ_nodes = EToN(Γ, p)

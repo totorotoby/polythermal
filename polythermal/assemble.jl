@@ -25,7 +25,7 @@ gaussian integration of funcs multiplied together with args for each function
 weights and abscissa pulled from: https://pomax.github.io/bezierinfo/legendre-gauss.html
 element - list of at least the start and end nodes of the element to integrate over
 =#
-function gauss_integrate(element, p, type, funcs...)
+function gauss_integrate(bounds, p, type, funcs...)
 
     weights = nothing
     if type == 1
@@ -66,8 +66,8 @@ function gauss_integrate(element, p, type, funcs...)
     end
         
     val = 0.0
-    scale = (element[end] - element[1]) * .5
-    c = (element[end] + element[1]) * .5
+    scale = (bounds[end] - bounds[1]) * .5
+    c = (bounds[end] + bounds[1]) * .5
     for l in 1:length(weights)
         val += weights[l] * 
             reduce(*, [f(scale * abscissa[l] + c) for f in funcs])
@@ -189,6 +189,38 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
             M[idx[i], idx[j]] += k_e[i,j]
         end
     end
+end
+
+
+function assemble_interface!(Γ, H, z, Nbasis, p, Pc, mt, Q)
+
+    Γ_nodes = EToN(Γ, p)
+    z_nodes = EToX(Γ, p, z)
+    
+    # linear interp interface within element
+    nb, ne = Γ_nodes[1], Γ_nodes[end]
+    zb, ze = z[nb], z[ne]
+    Δz = ze - zb
+    h_frac = (0 - H[nb])/(H[ne] - H[nb])
+    Γ_interior = zb + h_frac * Δz
+    
+    
+    
+    for i in 1:Nbasis, j in 1:Nbasis
+        v = gauss_integrate([zb, Γ_interior],
+                            p,
+                            1,
+                            z -> lb(z, i, z_nodes),
+                            z -> lb(z, j, z_nodes),
+                            Val -> expansion(Val, p, Pc, z))
+        
+    end
+    
+    @show Γ_interior
+    @show z[nb], z[ne]
+    quit()
+    
+    
 end
 
 function assemble_matrix!(Ne, Nbasis, p,
@@ -362,11 +394,18 @@ function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
                                         ϕtemp.^(params.α), t_ops.dm, t_ops.Fϕ)
 end
     
-function update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+function update_Q!(H, Γ, Nt, Pc, params, t_ops, g_ops)
 
+    #split element integration
+    assemble_interface!(Γ, H, params.z, params.Nbasis,
+                        params.p, Pc, t_ops.mt,
+                        g_ops.Q)
+    
     # reintegrate the compaction on the temperate side
-    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.mt,
+    assemble_global_from_local_tensor!(Γ, params.Nbasis,
+                                       params.p, Pc, t_ops.mt,
                                        g_ops.Q)
+    
     # add on the diffusion on the cold side
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
 
