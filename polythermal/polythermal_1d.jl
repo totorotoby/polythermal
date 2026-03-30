@@ -29,6 +29,7 @@ let
 
     #---- testing solutions ----#
     # solution to steady BVP for temperature
+
     cold_steady_test(z) = Tsurf + a.(z)/u.(z) * (z - H) +
         (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
     
@@ -64,12 +65,11 @@ let
     η = 1.0
     
     #---- numerical parameters ----#
-    #GLL interp nodes
-    GLL = true
+    
     # implicit or explict timestepping
     implicit = true
     # number of elements
-    Ne = 32
+    Ne = 64
     # basis order
     p = 6
     # number basis functions
@@ -170,17 +170,19 @@ let
               g = g,
               κ = κ)
 
-    t_final = 1.5
+    t_final = 2.0
     tsteps = Int(ceil(t_final / Δt))
-    
+
+    solve_Pc!(Nt, Pc, params, t_ops)
     for i = 1:tsteps
+        @show i
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))
     end
 
-    plot(H, z, label='H')
-    display(plot!(Pc, z, label="Pc"))
+    #plot(H, z, label='H')
+    #display(plot!(Pc, z, label="Pc"))
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]

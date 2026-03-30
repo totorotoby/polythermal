@@ -18,12 +18,14 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     
     #--- new solver ---#
 
-    solve_Pc!(Nt, Pc, params, t_ops)
-    update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
-
     # do enthalpy either implicitly
     if implicit == true
-        picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, .0001, 100)
+        #picard!(H, Pc, params, z, inflow, t_ops, g_ops, Δt, Tsurf, ϕbase, Nt, 1e-8, 100)
+        Γ = picard!(H, Pc, Γ,
+                    params, t_ops, g_ops,
+                    z, inflow,
+                    Δt, Tsurf, ϕbase,
+                    Nt, 1e-8, 100)
     else
         # or explicitly
         H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
@@ -36,9 +38,10 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     ϕ = get_porosity(H, 0.0)
     update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
-
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
+    sleep(.05)
+    
     return (Γ, H, Pc)
 
 end
@@ -110,7 +113,7 @@ function partition_temp_cold(T, p, z)
     end
 end
 
-
+#=
 function picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, tol, maxiter)
 
     M = g_ops.M
@@ -130,10 +133,102 @@ function picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, tol, maxiter)
     end
     H[:] .= A\R
     
-    #iter = 0
-
-    #while sum((H - Hprev).^2) > tol && iter < maxiter
-    #end
+    iter = 0
     
-end
+    while sum((H - Hprev).^2) > tol && iter < maxiter
 
+        Hprev[:] = H
+        A = (M + Δt/2 .* (S + Q))
+        R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
+        enforce_dirchlet!(A, R, Tsurf, size(A)[1])
+        if inflow == true
+            enforce_dirchlet!(A, R, 0.0, Nt)
+        else
+            enforce_dirchlet!(A, R, ϕbase, 1)
+        end
+        H[:] .= A\R
+
+        T = get_temp(H, 0.0)
+        Γ = partition_temp_cold(T, p, z)
+    
+        ϕ = get_porosity(H, 0.0)
+        update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
+
+        solve_Pc!(Nt, Pc, params, t_ops)
+        update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+    end
+
+end
+=#
+
+function picard!(H, Pc, Γ, params, t_ops, g_ops,
+                 z, inflow, Δt, Tsurf, ϕbase,
+                 Nt, tol, maxiter)
+
+
+    M = g_ops.M
+    S = g_ops.S
+    F = g_ops.F
+
+    eps = 1e-12
+    iter = 0
+    err = Inf
+
+    # previous timestep state
+
+    H_old  = copy(H)
+    Pc_old = copy(Pc)
+    H_iter = copy(H_old)
+    Pc_iter = copy(Pc_old)
+
+    # previous timestep Q
+    T0 = get_temp(H_old, 0.0)
+    Γ0 = partition_temp_cold(T0, params.p, z)
+    ϕ0 = get_porosity(H_old, 0.0)
+    update_ϕ_ops!(Γ0, ϕ0, Nt, params, t_ops)
+    update_Q!(Γ0, Nt, Pc_old, params, t_ops, g_ops)
+    Q_old = copy(g_ops.Q)
+
+    H_prev  = similar(H_iter)
+    Pc_prev = similar(Pc_iter)
+    Γ_prev = copy(Γ)
+    
+    #picard loop
+    while err > tol && iter < maxiter
+        @show iter
+        # get previous iteration k
+        H_prev .= H_iter
+        Pc_prev .= Pc_iter
+        Γ_prev = Γ
+
+        # compute new H and Pc k+1
+        T = get_temp(H_iter, 0.0)
+        Γ = partition_temp_cold(T, params.p, z)
+        ϕ = get_porosity(H_iter, 0.0)
+        update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
+        solve_Pc!(Nt, Pc_iter, params, t_ops)
+        update_Q!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
+        Q_new = g_ops.Q
+        A = M + (Δt/2) * (S + Q_new)
+        R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
+        enforce_dirchlet!(A, R, Tsurf, size(A,1))
+        if inflow
+            enforce_dirchlet!(A, R, 0.0, Nt)
+        else
+            enforce_dirchlet!(A, R, ϕbase, 1)
+        end
+        H_iter .= A \ R
+
+        # convergence check
+        err_H  = norm(H_iter - H_prev) / (norm(H_prev) + eps)
+        err_Pc = norm(Pc_iter - Pc_prev) / (norm(Pc_prev) + eps)
+        errΓ = norm(Γ .- Γ_prev) / (norm(Γ_prev) + eps)
+        err = max(err_H, err_Pc, eps)
+        iter += 1
+    end
+
+    H .= H_iter
+    Pc .= Pc_iter
+
+    return Γ
+end
