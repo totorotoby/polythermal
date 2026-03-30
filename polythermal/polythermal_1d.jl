@@ -68,7 +68,7 @@ let
     #GLL interp nodes
     GLL = true
     # implicit or explict timestepping
-    implicit = true
+    implicit = false
     # number of elements
     Ne = 32
     # basis order
@@ -171,10 +171,10 @@ let
               g = g,
               κ = κ)
 
-    t_final = 1.5
+    t_final = 2.0
     tsteps = Int(ceil(t_final / Δt))
     
-    for i = 1:tsteps
+    for i = 1:1#tsteps
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))

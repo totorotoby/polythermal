@@ -19,6 +19,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     #--- new solver ---#
 
     solve_Pc!(Nt, Pc, params, t_ops)
+    display(plot(Pc, z, label="Pc"))
+    quit()
+    #=
     update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # do enthalpy either implicitly
@@ -41,6 +44,8 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     return (Γ, H, Pc)
 
+    =#
+
 end
 
 function solve_Pc!(Nt, Pc, params, t_ops)
@@ -51,12 +56,11 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     g = params.g
     Pcbase = params.Pcbase
 
+
     Kϕ = @view t_ops.Kϕ[1:Nt, 1:Nt]
     Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
     Fϕ = @view t_ops.Fϕ[1:Nt]
 
-    
-    
     A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
     enforce_dirchlet!(A, R, Pcbase, 1)

@@ -28,6 +28,7 @@ element - list of at least the start and end nodes of the element to integrate o
 function gauss_integrate(element, p, type, funcs...)
 
     weights = nothing
+
     if type == 1
         weights = [ 0.1894506104550685,	
                     0.1894506104550685,	
@@ -93,6 +94,8 @@ Assembles a local over the reference element tensor with ψ_iψ_jψ_k, where ψ 
 =#
 function precompute_local_tensor(Nbasis, p, nodes, func1, func2, func3)
     # k_e[i,j,k] = ∫ φ_i φ_j φ_k dx on the reference element
+
+    @show Nbasis, nodes, p
     k_e = zeros(Nbasis, Nbasis, Nbasis)
     for i in 1:Nbasis, j in 1:Nbasis, k in 1:Nbasis
         k_e[i,j,k] = gauss_integrate(
@@ -102,6 +105,7 @@ function precompute_local_tensor(Nbasis, p, nodes, func1, func2, func3)
             x -> func3(x, k, nodes)
         )
     end
+    display(k_e)
     k_e = reshape(k_e, Nbasis^2, Nbasis)
     return k_e
 end
