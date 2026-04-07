@@ -1,4 +1,4 @@
-ousing Smoothing
+using Smoothing
 using Arpack
 include("assemble.jl")
 include("sol_tests.jl")
@@ -38,9 +38,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     ϕ = get_porosity(H, 0.0)
     update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    #display(plot!(H[:], z, label="H"))
-    #sleep(.05)
+    plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    display(plot!(H[:], z, label="H"))
+    sleep(.05)
     
     return (Γ, H, Pc)
 
@@ -126,7 +126,6 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     err = Inf
 
     # previous timestep state
-
     H_old  = copy(H)
     Pc_old = copy(Pc)
     H_iter = copy(H_old)
@@ -138,9 +137,8 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     Γ0 = partition_temp_cold(T0, params.p, z)
     ϕ0 = get_porosity(H_old, 0.0)
     update_ϕ_ops!(Γ0, ϕ0, Nt, params, t_ops)
-    update_Q!(Γ0, Nt, Pc_old, params, t_ops, g_ops)
+    update_enthalpy_ops!(Γ0, Nt, Pc_old, params, t_ops, g_ops)
     Q_old = copy(g_ops.Q)
-
     H_prev  = similar(H_iter)
     Pc_prev = similar(Pc_iter)
     Γ_prev = copy(Γ)
@@ -158,7 +156,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         ϕ = get_porosity(H_iter, 0.0)
         update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
         solve_Pc!(Nt, Pc_iter, params, t_ops)
-        update_Q!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
+        update_enthalpy_ops!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
         A = M + (Δt/2) * (S + Q_new)
         R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
