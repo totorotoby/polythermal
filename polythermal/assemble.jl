@@ -157,7 +157,11 @@ end
 
 
 
-function add_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M)
+function assemble_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M, addition)
+
+    if !addition
+        M[:, :] .= 0
+    end
     
     for e in 1:Ne
         idx=EToN(e, p)
@@ -411,25 +415,27 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     if params.SUPG
 
         # add supg mass matrix to global mass matrix
-        add_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
+        assemble_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
                                           params.τ * params.u(.5),
-                                          t_ops.dm, g_ops.M)
+                                          t_ops.dm, g_ops.Msupg, false)
 
-        # add supg stiffness matrix to Q
+
+        # add supg stiffness S_supg matrix to Q
+        assemble_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
+                                               params.τ * params.u(.5) * params.u(.5),
+                                               t_ops.km, g_ops.Q, true)
+
         #=
-        add_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
-                                          2 * params.τ * params.u(.5) * params.u(.5),
-        t_ops.km, g_ops.Q)
-        =#
-        #=
-        # add supg compaction matrix to Q
+        # add supg compaction M_pe_supg matrix to Q
         assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.st,
                                            g_ops.Q, true)
+        =#
+        
         # add supg forcing to global F vector
         assemble_global_static_vec_from_local_vec!(Γ, params.Nbasis, params.p,
                                                    params.τ * params.u(.5) * params.a(.5),
-        t_ops.sv, g_ops.F, true)
-        =#
+        t_ops.sv, g_ops.Fsupg, false)
+
     end
     # add on the diffusion on the cold side
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]

@@ -22,9 +22,11 @@ end
 mutable struct gOps
     Q::SparseMatrixCSC{Float64, Int64}
     S::SparseMatrixCSC{Float64, Int64}
-    F::Vector{Float64}    
+    F::Vector{Float64}
+    Fsupg::Vector{Float64}
     Mlump::SparseMatrixCSC{Float64, Int64}
     M::SparseMatrixCSC{Float64, Int64}
+    Msupg::SparseMatrixCSC{Float64, Int64}
     Kc::SparseMatrixCSC{Float64, Int64}
 end
 
@@ -75,7 +77,7 @@ let
     # number of elements
     Ne = 64
     # basis order
-    p = 6
+    p = 4
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -92,7 +94,7 @@ let
     hmin = z[2] - z[1]
     zfine = collect(B:hmin/3:L)
     #SUPG strength param
-    τ = he /2 * u(.5)
+    τ = (he /2 * abs(u(.5)))
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1
@@ -150,8 +152,11 @@ let
     Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     F = zeros(N)
     assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, a(.5), mv, F, false)
-    g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
-
+    g_ops = gOps(spzeros(N,N),
+                 S, F, zeros(N),
+                 Mlump, M,
+                 spzeros(N,N), Kc)
+    
     params = (inflow = inflow,              
               implicit = implicit,
               SUPG = SUPG,

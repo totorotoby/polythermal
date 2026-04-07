@@ -1,5 +1,6 @@
 using Smoothing
 using Arpack
+using Printf
 include("assemble.jl")
 include("sol_tests.jl")
 
@@ -40,7 +41,6 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(H[:], z, label="H"))
-    sleep(.05)
     
     return (Γ, H, Pc)
 
@@ -120,7 +120,8 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     M = g_ops.M
     S = g_ops.S
     F = g_ops.F
-
+    z = params.z
+    
     eps = 1e-12
     iter = 0
     err = Inf
@@ -139,6 +140,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     update_ϕ_ops!(Γ0, ϕ0, Nt, params, t_ops)
     update_enthalpy_ops!(Γ0, Nt, Pc_old, params, t_ops, g_ops)
     Q_old = copy(g_ops.Q)
+    Msupg = copy(g_ops.Msupg)
     H_prev  = similar(H_iter)
     Pc_prev = similar(Pc_iter)
     Γ_prev = copy(Γ)
@@ -158,8 +160,10 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         solve_Pc!(Nt, Pc_iter, params, t_ops)
         update_enthalpy_ops!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
-        A = M + (Δt/2) * (S + Q_new)
-        R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
+        #Msupg = g_ops.Msupg
+        Fsupg = g_ops.Fsupg
+        A = (M + Msupg) + (Δt/2) * (S + Q_new)
+        R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
         enforce_dirchlet!(A, R, Tsurf, size(A,1))
         if inflow
             enforce_dirchlet!(A, R, 0.0, Nt)
@@ -176,6 +180,8 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         err = max(err_H, err_Pc, eps)
         iter += 1
     end
+
+    @printf "Maximum non-linear iterations excited\n"
 
     H .= H_iter
     Pc .= Pc_iter
