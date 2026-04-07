@@ -133,6 +133,7 @@ let
     # element tensor matrix used to assemble coupled matrices
     nodes = z[1:p+1]
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    # TODO: FIGURE OUT IF THIS CORRECT BELOW
     st = precompute_local_tensor(Nbasis, p, nodes, dlb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
