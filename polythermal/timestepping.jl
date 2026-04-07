@@ -160,10 +160,16 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         solve_Pc!(Nt, Pc_iter, params, t_ops)
         update_enthalpy_ops!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
-        #Msupg = g_ops.Msupg
-        Fsupg = g_ops.Fsupg
-        A = (M + Msupg) + (Δt/2) * (S + Q_new)
-        R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
+
+        if params.SUPG
+            #Msupg = g_ops.Msupg
+            Fsupg = g_ops.Fsupg
+            A = (M + Msupg) + (Δt/2) * (S + Q_new)
+            R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
+        else
+            A = M + (Δt/2) * (S + Q_new)
+            R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
+        end
         enforce_dirchlet!(A, R, Tsurf, size(A,1))
         if inflow
             enforce_dirchlet!(A, R, 0.0, Nt)
@@ -181,8 +187,10 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         iter += 1
     end
 
-    @printf "Maximum non-linear iterations excited\n"
-
+    if iter == maxiter
+        @printf "Maximum non-linear iterations excited\n"
+    end
+        
     H .= H_iter
     Pc .= Pc_iter
 

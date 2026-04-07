@@ -412,6 +412,7 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     # reintegrate the compaction on the temperate side
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
                                        Pc, t_ops.mt, g_ops.Q, false)
+    
     if params.SUPG
 
         # add supg mass matrix to global mass matrix
@@ -424,7 +425,6 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
         assemble_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
                                                params.τ * params.u(.5) * params.u(.5),
                                                t_ops.km, g_ops.Q, true)
-
         #=
         # add supg compaction M_pe_supg matrix to Q
         assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.st,
@@ -434,7 +434,7 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
         # add supg forcing to global F vector
         assemble_global_static_vec_from_local_vec!(Γ, params.Nbasis, params.p,
                                                    params.τ * params.u(.5) * params.a(.5),
-        t_ops.sv, g_ops.Fsupg, false)
+                                                   t_ops.sv, g_ops.Fsupg, false)
 
     end
     # add on the diffusion on the cold side
