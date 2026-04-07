@@ -14,6 +14,7 @@ mutable struct tOps
     mt::Matrix{Float64}
     kt::Matrix{Float64}
     dm::Matrix{Float64}
+    st::Matrix{Float64}
 end
 
 mutable struct gOps
@@ -87,6 +88,8 @@ let
     # minimum element size
     hmin = z[2] - z[1]
     zfine = collect(B:hmin/3:L)
+    #SUPG strength param
+    τ = he /2 * u(.5)
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = -.1
@@ -124,31 +127,25 @@ let
     
     # element tensor matrix used to assemble coupled matrices
     nodes = z[1:p+1]
-    fine = 0:.00001:nodes[end]
-    #=
-    p1 = plot()
-    for i in 1:p+1
-        p1 = plot!(fine, [lb(f, i, nodes) for f in fine])
-    end
-    display(p1)
-    =#
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
+    st = precompute_local_tensor(Nbasis, p, nodes, dlb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
+    mv = precompute_local_vec(Nbasis, p, nodes, lb)
+    sv = precompute_local_vec(Nbasis, p, nodes, dlb)
 
+    
     ϕ = get_porosity(H, 0.0)
     Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
                                    ϕ, α, mt, kt, dm, It, Jt)
-
-    t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm)
+    t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm, st)
 
     # static global operators
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
     Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     F = zeros(N)
-    assemble_forcing!(Ne, Nbasis, p, z, lb, a, one, F)
-
+    assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, a(.5), mv, F)
     g_ops = gOps(spzeros(N,N), S, F, Mlump, M, Kc)
 
     params = (inflow = inflow,
@@ -168,21 +165,20 @@ let
               α = α,
               η = η,
               g = g,
-              κ = κ)
+              κ = κ,
+              τ = τ)
 
     t_final = 2.0
     tsteps = Int(ceil(t_final / Δt))
 
-    solve_Pc!(Nt, Pc, params, t_ops)
     for i = 1:tsteps
-        @show i
         (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))
     end
 
-    #plot(H, z, label='H')
-    #display(plot!(Pc, z, label="Pc"))
+    plot(H, z, label='H')
+    display(plot!(Pc, z, label="Pc"))
     
     Γ_nodes = EToN(Γ, p)
     Nt = Γ_nodes[end]

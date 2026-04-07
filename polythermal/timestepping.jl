@@ -1,4 +1,4 @@
-using Smoothing
+ousing Smoothing
 using Arpack
 include("assemble.jl")
 include("sol_tests.jl")
@@ -38,9 +38,9 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     ϕ = get_porosity(H, 0.0)
     update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    plot(Pc[1:Nt], z[1:Nt], label="Pc")
-    display(plot!(H[:], z, label="H"))
-    sleep(.05)
+    #plot(Pc[1:Nt], z[1:Nt], label="Pc")
+    #display(plot!(H[:], z, label="H"))
+    #sleep(.05)
     
     return (Γ, H, Pc)
 
@@ -58,7 +58,6 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
     Fϕ = @view t_ops.Fϕ[1:Nt]
 
-    
     
     A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
@@ -113,54 +112,6 @@ function partition_temp_cold(T, p, z)
     end
 end
 
-#=
-function picard!(H, inflow, g_ops, Δt, Tsurf, ϕbase, Nt, tol, maxiter)
-
-    M = g_ops.M
-    S = g_ops.S
-    Q = g_ops.Q
-    F = g_ops.F
-    
-    Hprev = copy(H)
-
-    A = (M + Δt/2 .* (S + Q))
-    R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
-    enforce_dirchlet!(A, R, Tsurf, size(A)[1])
-    if inflow == true
-        enforce_dirchlet!(A, R, 0.0, Nt)
-    else
-        enforce_dirchlet!(A, R, ϕbase, 1)
-    end
-    H[:] .= A\R
-    
-    iter = 0
-    
-    while sum((H - Hprev).^2) > tol && iter < maxiter
-
-        Hprev[:] = H
-        A = (M + Δt/2 .* (S + Q))
-        R = (M - Δt/2 .* (S + Q)) * Hprev + Δt .* F
-        enforce_dirchlet!(A, R, Tsurf, size(A)[1])
-        if inflow == true
-            enforce_dirchlet!(A, R, 0.0, Nt)
-        else
-            enforce_dirchlet!(A, R, ϕbase, 1)
-        end
-        H[:] .= A\R
-
-        T = get_temp(H, 0.0)
-        Γ = partition_temp_cold(T, p, z)
-    
-        ϕ = get_porosity(H, 0.0)
-        update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
-
-        solve_Pc!(Nt, Pc, params, t_ops)
-        update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
-    end
-
-end
-=#
-
 function picard!(H, Pc, Γ, params, t_ops, g_ops,
                  z, inflow, Δt, Tsurf, ϕbase,
                  Nt, tol, maxiter)
@@ -182,6 +133,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     Pc_iter = copy(Pc_old)
 
     # previous timestep Q
+    solve_Pc!(Nt, Pc, params, t_ops)
     T0 = get_temp(H_old, 0.0)
     Γ0 = partition_temp_cold(T0, params.p, z)
     ϕ0 = get_porosity(H_old, 0.0)
@@ -192,10 +144,9 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     H_prev  = similar(H_iter)
     Pc_prev = similar(Pc_iter)
     Γ_prev = copy(Γ)
-    
+
     #picard loop
     while err > tol && iter < maxiter
-        @show iter
         # get previous iteration k
         H_prev .= H_iter
         Pc_prev .= Pc_iter
@@ -223,6 +174,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         err_H  = norm(H_iter - H_prev) / (norm(H_prev) + eps)
         err_Pc = norm(Pc_iter - Pc_prev) / (norm(Pc_prev) + eps)
         errΓ = norm(Γ .- Γ_prev) / (norm(Γ_prev) + eps)
+
         err = max(err_H, err_Pc, eps)
         iter += 1
     end

@@ -75,6 +75,17 @@ function gauss_integrate(element, p, type, funcs...)
     return scale *  val
 end
 
+function precompute_local_vec(Nbasis, p, nodes, func1)
+    
+    k_e = zeros(Nbasis)
+    for i in 1:Nbasis
+        k_e[i] = gauss_integrate(nodes, p ,1,
+                                 x -> func1(x, i, nodes)
+                                 )
+    end
+    return k_e
+end
+
 function precompute_local_mat(Nbasis, p, nodes, func1, func2)
     # k_e[i,j] = ∫ φ_i φ_j dx on the reference element
     k_e = zeros(Nbasis, Nbasis)
@@ -129,6 +140,18 @@ function get_sparsity(Ne, nnz, Nbasis, p)
     return I, J
 end
 
+
+function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F)
+
+    F[:] .= 0
+    for e in 1:Ne
+        idx = EToN(e,p)
+        for i in 1:Nbasis
+            F[idx[i]] += g * t_e[i]
+        end
+    end
+end
+
 function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F)
 
     F[:] .= 0
@@ -148,6 +171,7 @@ end
 Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_k)
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
+# NOTE: NEEDS MAG JACOBIAN FOR NON-UNIFORM MESH
 function assemble_global_from_local_tensor!(
         Ne, Nbasis, p, g, t_e, V::Vector{Float64})
 
@@ -214,6 +238,7 @@ function assemble_matrix!(Ne, Nbasis, p,
         end
     end
 end
+
 
 function assemble_forcing!(Ne, Nbasis, p, x, func1, func2, forcing, F)
     for e in 1:Ne
@@ -352,7 +377,7 @@ end
 
 function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    ϕtemp = ϕ .+ .000001
+    ϕtemp = ϕ .+ 1e-8
     
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
                                        ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ)
