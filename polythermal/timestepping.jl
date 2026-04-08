@@ -6,7 +6,7 @@ include("sol_tests.jl")
 
 
 
-function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+function timestep(H, Pc, params, t_ops, g_ops, Δt)
 
     p = params.p
     Tsurf = params.Tsurf
@@ -14,8 +14,6 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     z = params.z
     inflow = params.inflow
     implicit = params.implicit
-    Γ_nodes = EToN(Γ, p)
-    Nt = Γ_nodes[end]
     
     #--- new solver ---#
 
@@ -42,7 +40,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
     plot(Pc[1:Nt], z[1:Nt], label="Pc")
     display(plot!(H[:], z, label="H"))
     
-    return (Γ, H, Pc)
+    return (H, Pc)
 
 end
 
