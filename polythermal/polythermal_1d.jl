@@ -45,7 +45,7 @@ let
 
     #---- physical parameters ----#
     # inflow or outflow problem
-    inflow = true
+    inflow = false
     u(z) = nothing
     # velocity
     if inflow == true
@@ -87,12 +87,12 @@ let
     B = 0
     # length of element
     he = (L-B)/Ne
+    # regularization function
+    ϵ = 3*he
+    χfunc(H) = .5 * (1 + tanh(H/ϵ))
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
     z = get_mesh(Ne, p, L, N, he, ref_nodes)
-    # minimum element size
-    hmin = z[2] - z[1]
-    zfine = collect(B:hmin/3:L)
     #SUPG strength param
     τ = (he /2 * abs(u(.5)))
     #---- initial and boundary data ----#

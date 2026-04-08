@@ -26,7 +26,7 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
                     params, t_ops, g_ops,
                     z, inflow,
                     Δt, Tsurf, ϕbase,
-                    Nt, 1e-8, 100)
+                    Nt, 1e-8, 200)
     else
         # or explicitly
         H[:] = RK4(H, Δt, Nt, params, g_ops, enthalpy_rhs)
@@ -129,9 +129,11 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     # previous timestep state
     H_old  = copy(H)
     Pc_old = copy(Pc)
+    Γ_old = copy(Γ)
     H_iter = copy(H_old)
     Pc_iter = copy(Pc_old)
-
+    Γ_iter = copy(Γ_old)
+    
     # previous timestep Q
     solve_Pc!(Nt, Pc, params, t_ops)
     T0 = get_temp(H_old, 0.0)
@@ -143,26 +145,26 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     Msupg = copy(g_ops.Msupg)
     H_prev  = similar(H_iter)
     Pc_prev = similar(Pc_iter)
-    Γ_prev = copy(Γ)
-
+    Γ_prev = copy(Γ0)
+    
     #picard loop
     while err > tol && iter < maxiter
         # get previous iteration k
         H_prev .= H_iter
         Pc_prev .= Pc_iter
-        Γ_prev = Γ
+        Γ_prev = Γ_iter
 
         # compute new H and Pc k+1
         T = get_temp(H_iter, 0.0)
-        Γ = partition_temp_cold(T, params.p, z)
+        Γ_iter = partition_temp_cold(T0, params.p, z)
         ϕ = get_porosity(H_iter, 0.0)
-        update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
+        update_ϕ_ops!(Γ_iter, ϕ, Nt, params, t_ops)
         solve_Pc!(Nt, Pc_iter, params, t_ops)
-        update_enthalpy_ops!(Γ, Nt, Pc_iter, params, t_ops, g_ops)
+        update_enthalpy_ops!(Γ0, Nt, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
 
         if params.SUPG
-            #Msupg = g_ops.Msupg
+            Msupg = g_ops.Msupg
             Fsupg = g_ops.Fsupg
             A = (M + Msupg) + (Δt/2) * (S + Q_new)
             R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
@@ -181,9 +183,8 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         # convergence check
         err_H  = norm(H_iter - H_prev) / (norm(H_prev) + eps)
         err_Pc = norm(Pc_iter - Pc_prev) / (norm(Pc_prev) + eps)
-        errΓ = norm(Γ .- Γ_prev) / (norm(Γ_prev) + eps)
-
-        err = max(err_H, err_Pc, eps)
+        err_Γ = norm(Γ_iter .- Γ_prev) / (norm(Γ_prev) + eps)
+        err = max(err_H, err_Pc, err_Γ)
         iter += 1
     end
 
@@ -194,5 +195,5 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     H .= H_iter
     Pc .= Pc_iter
 
-    return Γ
+    return Γ0
 end
