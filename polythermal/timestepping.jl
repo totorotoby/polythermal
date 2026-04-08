@@ -193,5 +193,5 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     H .= H_iter
     Pc .= Pc_iter
 
-    return Γ0
+    return Γ
 end
