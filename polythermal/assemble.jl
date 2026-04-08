@@ -141,13 +141,32 @@ function get_sparsity(Ne, nnz, Nbasis, p)
 end
 
 
-function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F)
+function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition)
 
-    F[:] .= 0
+    if !addition
+        F[:] .= 0
+    end
+    
     for e in 1:Ne
         idx = EToN(e,p)
         for i in 1:Nbasis
             F[idx[i]] += g * t_e[i]
+        end
+    end
+end
+
+
+
+function assemble_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M, addition)
+
+    if !addition
+        M[:, :] .= 0
+    end
+    
+    for e in 1:Ne
+        idx=EToN(e, p)
+        for i in 1:Nbasis, j in 1:Nbasis
+            M[idx[i], idx[j]] += g * t_e[i,j]
         end
     end
 end
@@ -158,7 +177,6 @@ function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F)
     for e in 1:Ne
         idx=EToN(e, p)
         glocal = @view g[idx]
-        # do flattened tensor multiple giving flattened local 2d matrix
         k_e = t_e * glocal
         for i in 1:Nbasis
             # at starting element add to last element index,
@@ -172,8 +190,7 @@ Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
 # NOTE: NEEDS MAG JACOBIAN FOR NON-UNIFORM MESH
-function assemble_global_from_local_tensor!(
-        Ne, Nbasis, p, g, t_e, V::Vector{Float64})
+function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Float64})
 
     c = 1
     for e in 1:Ne
@@ -194,9 +211,11 @@ function assemble_global_from_local_tensor!(
 end
 
 function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
-                                            M::SparseMatrixCSC{Float64, Int64})
-
-    M[:] .= 0
+                                            M::SparseMatrixCSC{Float64, Int64}, addition)
+    if !addition
+        M[:] .= 0
+    end
+    
     for e in 1:Ne
         idx=EToN(e, p)
         glocal = @view g[idx]
@@ -214,6 +233,7 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
         end
     end
 end
+
 
 function assemble_matrix!(Ne, Nbasis, p,
                           x, func1, func2, k,
@@ -380,21 +400,49 @@ function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
     ϕtemp = ϕ .+ 1e-8
     
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
-                                       ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ)
+                                       ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ, false)
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
-                                       ϕtemp, t_ops.mt, t_ops.Mϕ)
+                                       ϕtemp, t_ops.mt, t_ops.Mϕ, false)
     assemble_global_vec_from_local_mat!(Γ, params.Nbasis, params.p,
                                         ϕtemp.^(params.α), t_ops.dm, t_ops.Fϕ)
 end
     
-function update_Q!(Γ, Nt, Pc, params, t_ops, g_ops)
+function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
 
     # reintegrate the compaction on the temperate side
-    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, Pc, t_ops.mt,
-                                       g_ops.Q)
+    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
+                                       Pc, t_ops.mt, g_ops.Q, false)
+    
+    if params.SUPG
+
+        # add supg mass matrix to global mass matrix
+        assemble_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
+                                          params.τ * params.u(.5),
+                                          t_ops.dm, g_ops.Msupg, false)
+        # add supg stiffness S_supg matrix to Q
+        assemble_global_from_local_static_mat!(Γ, params.Nbasis, params.p,
+                                               params.τ * params.u(.5) * params.u(.5),
+                                               t_ops.km, g_ops.Q, true)
+        
+        # add supg compaction M_pe_supg matrix to Q
+        assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p, params.τ * params.u(.5)/params.η * Pc, t_ops.st,
+                                           g_ops.Q, true)
+        
+        # add supg forcing to global F vector
+        assemble_global_static_vec_from_local_vec!(Γ, params.Nbasis, params.p,
+                                                   params.τ * params.u(.5) * params.a(.5),
+                                                   t_ops.sv, g_ops.Fsupg, false)
+    end
     # add on the diffusion on the cold side
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
+end
 
+function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)
+
+    χ = χfunc.(H)
+    
+    
+    
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)
