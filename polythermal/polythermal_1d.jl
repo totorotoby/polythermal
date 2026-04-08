@@ -48,17 +48,13 @@ let
     inflow = false
     u(z) = nothing
     # velocity
-    if inflow == true
-        u(z) = -1.0
-    else
-        u(z) = 1.0
-    end
+    u(z) = inflow ? -1.0 : 1.0
     # inverse peclet number
     Pe_inv(z) = 1.0
     # dissipation rate
     a(z) = 1.0
     # thermal conductivity
-    κ = 1.0
+    κ = inflow ? 1.0 : 0.25
     # gravitational acceleration
     g = -1.0
     # carman-kozeny exponent
@@ -97,7 +93,7 @@ let
     τ = (he /2 * abs(u(.5)))
     #---- initial and boundary data ----#
     # surface temperature
-    Tsurf = -.1
+    Tsurf = inflow ? -.1 : -.5
     # compaction pressure at the base
     Pcbase = 1.0
     # porosity base
