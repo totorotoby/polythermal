@@ -2,21 +2,24 @@ using Printf
 using Plots
 using DelimitedFiles
 using FastGaussQuadrature
+using LinearAlgebra
 
 include("assemble.jl")
 include("timestepping.jl")
 
-mutable struct tOps
-    nnzt::Int64
-    Kϕ::SparseMatrixCSC{Float64, Int64}
-    Mϕ::SparseMatrixCSC{Float64, Int64}
-    Fϕ::Vector{Float64}
+mutable struct elementOps
     mt::Matrix{Float64}
     kt::Matrix{Float64}
-    dm::Matrix{Float64}
+    sm::Matrix{Float64}
     km::Matrix{Float64}
     st::Matrix{Float64}
     sv::Vector{Float64}
+    W::Matrix{Float64}
+    B::Matrix{Float64}
+    dB::Matrix{Float64}
+    Hq::Vector{Float64}
+    χq::Vector{Float64}
+    ϕq::Vector{Float64}
 end
 
 mutable struct gOps
@@ -72,6 +75,8 @@ let
     SUPG = true
     # number of elements
     Ne = 64
+    # number quadtrature points
+    Nq = 16
     # basis order
     p = 4
     # number basis functions
@@ -81,13 +86,11 @@ let
     # domain boundarys [L, B]
     L = 1.0
     B = 0
-    # length of element
+    # length of element    
     he = (L-B)/Ne
-    # regularization function
-    ϵ = 3*he
-    ϵp = 1e-7
-    χfunc(H) = .5 * (1 + tanh(H/ϵ))
-    χpfunc(H) = ϵp + (1 - ϵp) * χfunc(H)
+    #regularization params
+    ϵ = 2*he
+    ϵp = 1e-8
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
     z = get_mesh(Ne, p, L, N, he, ref_nodes)
@@ -104,12 +107,12 @@ let
     # initial enthalpy
     H = zeros(N)
     H[:] = initial_enth.(z)
-    H1 = zeros(N)
-    H1[:] = initial_enth.(z)
-
+    Hq = zeros(Ne * Nq)
+    χq = zeros(Ne * Nq)
+    ϕq = zeros(Ne * Nq)
     # compaction pressure
     Pc = zeros(N)
-
+    
     # advective cfl
     if implicit == true
         Δt = he/(2*abs(u(1)))
@@ -120,40 +123,44 @@ let
     #---- operator assembly ----#
     
     nnz = NNZ(Ne, Nbasis)
-    I, J = get_sparsity(Ne, nnz, Nbasis, p)
-    # element tensor matrix used to assemble coupled matrices
+
     nodes = z[1:p+1]
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     st = precompute_local_tensor(Nbasis, p, nodes, dlb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
-    dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
+    sm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
     km = precompute_local_mat(Nbasis, p, nodes, dlb, dlb)
     mv = precompute_local_vec(Nbasis, p, nodes, lb)
     sv = precompute_local_vec(Nbasis, p, nodes, dlb)
 
-    ϕ = get_porosity(H, 0.0)
-    Kϕ, Mϕ, Fϕ = get_temperate_ops(Ne, N, nnz, Nbasis, p,
-                                   ϕ, α, mt, kt, dm, I, J)
+    W = Diagonal([0.1894506104550685,	
+                  0.1894506104550685,	
+                  0.1826034150449236,	
+                  0.1826034150449236,	
+                  0.1691565193950025,	
+                  0.1691565193950025,	
+                  0.1495959888165767,	
+                  0.1495959888165767,	
+                  0.1246289712555339,	
+                  0.1246289712555339,	
+                  0.0951585116824928,
+                  0.0951585116824928,	
+                  0.0622535239386479,	
+                  0.0622535239386479,	
+                  0.0271524594117541,	
+                  0.0271524594117541])
     
-    t_ops = tOps(nnz, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
+    B = precompute_basis_quad(Nbasis, nodes, lb)
+    dB = precompute_basis_quad(Nbasis, nodes, dlb)
 
-    # static global operators
-    Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
-    S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
-    F = zeros(N)
-    
-    assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, a(.5), mv, F, false)
-    g_ops = gOps(spzeros(N,N),
-                 S, F, zeros(N),
-                 Mlump, M,
-                 spzeros(N,N), Kc)
-    
+    eops = elementOps(mt, kt, sm, km, st, sv, W, B, dB, Hq, χq, ϕq)
+
     params = (inflow = inflow,              
               implicit = implicit,
               SUPG = SUPG,
               N = N,
               Ne = Ne,
+              Nq = Nq,
               Nbasis = Nbasis,
               p = p,
               z = z,
@@ -168,13 +175,15 @@ let
               η = η,
               g = g,
               κ = κ,
-              τ = τ)
+              τ = τ,
+              ϵ = ϵ,
+              ϵp = ϵp)
 
     t_final = 2.0
     tsteps = Int(ceil(t_final / Δt))
 
     for i = 1:tsteps
-        (H, Pc) = timestep(H, Pc, params, t_ops, g_ops, Δt)
+        (H, Pc) = timestep(H, Pc, params, eops, Δt)
     end
 
     #plot(H, z, label='H')

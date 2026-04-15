@@ -75,6 +75,40 @@ function gauss_integrate(element, p, type, funcs...)
     return scale *  val
 end
 
+function precompute_basis_quad(Nbasis, nodes, func)
+
+    abscissa = [-0.0950125098376374,
+                0.0950125098376374, 
+                -0.2816035507792589,
+                0.2816035507792589, 
+                -0.4580167776572274,
+                0.4580167776572274, 
+                -0.6178762444026438,
+                0.6178762444026438, 
+                -0.7554044083550030,
+                0.7554044083550030, 
+                -0.8656312023878318,
+                0.8656312023878318, 
+                -0.9445750230732326,
+                0.9445750230732326, 
+                -0.9894009349916499,
+                0.9894009349916499]
+    
+    B = zeros(length(abscissa), Nbasis)
+
+    scale = (nodes[end] - nodes[1]) * .5
+    c = (nodes[end] + nodes[1]) * .5
+    
+    for q=1:length(abscissa)
+        for i = 1:Nbasis
+            f = x -> func(x, i, nodes)
+            B[q, i] = f(scale * abscissa[q] + c)
+        end
+    end
+
+    return B
+end
+
 function precompute_local_vec(Nbasis, p, nodes, func1)
     
     k_e = zeros(Nbasis)
@@ -371,39 +405,36 @@ function get_temp(H, T_m)
     return min.(T_m, H)
 end
 
-function get_porosity(H, T_m)
+function get_poroity(H, T_m)
     return max.(T_m, H)
 end
 
-function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
-                           ϕ, α, mt, kt, dm, It, Jt)
+function get_global_ops(Ne, H, N, Nbasis, p,
+                           ϕ, α, mt, kt, dm)
 
     ϕtemp = ϕ .+ .000001
     
-    VKϕ = zeros(nnzt)
-    VMϕ = zeros(nnzt)
+    Kϕ = spzeros(N,N)
+    Mϕ = spzeros(N,N)
     Fϕ = zeros(N)
 
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp, mt, VMϕ)
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp.^α, kt, VKϕ)    
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp, mt, Mϕ)
+    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp.^α, kt, Kϕ)    
     assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕtemp.^α, dm, Fϕ)
-
-    Kϕ = sparse(It, Jt, VKϕ, N, N)
-    Mϕ = sparse(It, Jt, VMϕ, N, N)
 
     return Kϕ, Mϕ, Fϕ
     
 end
 
-function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
+function update_compaction_ops!(ϕ, params, t_ops)
 
     ϕtemp = ϕ .+ 1e-8
     
-    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
+    assemble_global_from_local_tensor!(Ne, params.Nbasis, params.p,
                                        ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ, false)
-    assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
+    assemble_global_from_local_tensor!(Ne, params.Nbasis, params.p,
                                        ϕtemp, t_ops.mt, t_ops.Mϕ, false)
-    assemble_global_vec_from_local_mat!(Γ, params.Nbasis, params.p,
+    assemble_global_vec_from_local_mat!(Ne, params.Nbasis, params.p,
                                         ϕtemp.^(params.α), t_ops.dm, t_ops.Fϕ)
 end
     
@@ -437,61 +468,3 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
 end
 
-function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)
-
-    χ = χfunc.(H)
-    
-    
-    
-end
-
-function get_lumped_mass(Ne, Nbasis, p, z, N)
-    
-    I = Int64[]
-    J = Int64[]
-    Vmass = Float64[]
-    diag = zeros(N)
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, lb,
-                     one,
-                     I, J, Vmass)
-
-    for nz = 1:length(I)
-        diag[I[nz]] += Vmass[nz]
-    end
-    for i = 1:N
-        diag[i] = 1/diag[i]
-    end
-    
-    Mlump = spdiagm(0 => diag)
-    M =  sparse(I, J, Vmass, N, N)
-    
-    return Mlump, M
-end
-    
-function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
-    # generate diffusion (second derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vdiff = Float64[]
-    assemble_matrix!(Γc, Nbasis, p,
-                     z, dlb, dlb, one,
-                     I, J, Vdiff)
-    I = I .+ (Nt - 1)
-    J = J .+ (Nt - 1)
-    Kc = sparse(I,J, Vdiff, N,N)
-    return Kc
-end
-
-function get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    # generate advective (first derivative) operator matrix
-    I = Int64[]
-    J = Int64[]
-    Vadv = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, dlb, u,
-                     I, J, Vadv)
-    S = sparse(I, J, Vadv, N, N)
-    
-    return S
-end
