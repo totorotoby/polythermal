@@ -437,12 +437,48 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
 end
 
+function update_reg_ϕ_ops!(ϕ, params, t_ops)
+    
+    ϕpos = max.(ϕ, 0.0)
+    ϕreg = ϕpos .+ params.ϵp
+    
+    assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                       ϕreg.^(params.α), t_ops.kt, t_ops.Kϕ, false)
+    assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                       ϕpos, t_ops.mt, t_ops.Mϕ, false)
+    assemble_global_vec_from_local_mat!(params.Ne, params.Nbasis, params.p,
+                                        ϕpos.^(params.α), t_ops.dm, t_ops.Fϕ)
+end
+
 function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)
 
-    χ = χfunc.(H)
-    
-    
-    
+
+    χ = params.χ.(H)
+    u = params.u(.5)
+    τ = params.τ
+    η = params.η
+
+    # conduction
+    assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                       (1 .- χ), t_ops.kt, g_ops.Q, false)
+    # melt/compaction
+    assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                       (χ.^2 .* Pc) ./ η, t_ops.mt, g_ops.Q, true)
+
+    if params.SUPG
+        # supg mass
+        assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                           (τ*u) .* χ, t_ops.st, g_ops.Msupg, false)
+        # supg streamline
+        assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                           (τ*u*u) .* χ, t_ops.kt, g_ops.Q, true)
+        # supg melt
+        assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                           (τ*u/η) .* (χ.^2 .* Pc), t_ops.st, g_ops.Q, true)
+        # supg forcing
+        assemble_global_vec_from_local_mat!(params.Ne, params.Nbasis, params.p,
+                                            (τ*u*params.a(.5)) .* χ, t_ops.dm, g_ops.Fsupg)
+    end
 end
 
 function get_lumped_mass(Ne, Nbasis, p, z, N)

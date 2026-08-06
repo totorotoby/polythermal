@@ -46,6 +46,22 @@ function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
 end
 
+function timestep_reg(H, Pc, params, t_ops, g_ops, Δt)
+    
+    Tsurf  = params.Tsurf
+    ϕbase  = params.ϕbase
+    inflow = params.inflow
+
+    reg_picard!(H, Pc, params, t_ops, g_ops,
+                inflow, Δt, Tsurf, ϕbase, 1e-8, 200)
+
+    
+    plot(Pc, params.z, label="Pc")
+    display(plot!(H, params.z, label="H"))
+
+    return (H, Pc)
+end
+
 function solve_Pc!(Nt, Pc, params, t_ops)
 
     κ = params.κ
@@ -65,6 +81,21 @@ function solve_Pc!(Nt, Pc, params, t_ops)
 
     Pc[1:Nt] .= A\R
     
+end
+
+function solve_reg_Pc!(Pc, params, t_ops)
+    
+    κ = params.κ
+    δ = params.δ
+    η = params.η
+    g = params.g
+    Pcbase = params.Pcbase
+
+    A = -κ * δ .* t_ops.Kϕ - 1/η .* t_ops.Mϕ
+    R = κ * g .* t_ops.Fϕ
+    enforce_dirchlet!(A, R, Pcbase, 1)
+
+    Pc .= A\R
 end
 
 #explict timestepping for enthalpy method
@@ -173,9 +204,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
             A = M + (Δt/2) * (S + Q_new)
             R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
         end
-
         enforce_dirchlet!(A, R, Tsurf, size(A,1))
-        
         if inflow
             enforce_dirchlet!(A, R, 0.0, Nt_iter)
         else
@@ -190,14 +219,83 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         err = max(err_H, err_Pc, err_Γ)
         iter += 1
     end
-    
-    
+
     if iter == maxiter
         @printf "Maximum non-linear iterations excited\n"
     end
-    
+        
     H .= H_iter
     Pc .= Pc_iter
 
     return Γ
+end
+
+function reg_picard!(H, Pc, params, t_ops, g_ops,
+                     inflow, Δt, Tsurf, ϕbase, tol, maxiter)
+
+    M = g_ops.M
+    S = g_ops.S
+    F = g_ops.F
+
+    eps = 1e-12
+    iter = 0
+    err = Inf
+
+    # previous timestep state
+    H_old = copy(H)
+
+    # previous timestep operators
+    ϕ0 = params.χ.(H_old) .* H_old
+    update_reg_ϕ_ops!(ϕ0, params, t_ops)
+    solve_reg_Pc!(Pc, params, t_ops)
+    update_reg_ethalpy_ops!(H_old, Pc, params, t_ops, g_ops)
+    Q_old = copy(g_ops.Q)
+
+    H_iter  = copy(H_old)
+    Pc_iter = copy(Pc)
+    H_prev  = similar(H_iter)
+    Pc_prev = similar(Pc_iter)
+
+    # picard loop
+    while err > tol && iter < maxiter
+        H_prev  .= H_iter
+        Pc_prev .= Pc_iter
+
+        # relinearize coupled operators at the current iterate
+        ϕ = params.χ.(H_iter) .* H_iter
+        update_reg_ϕ_ops!(ϕ, params, t_ops)
+        solve_reg_Pc!(Pc_iter, params, t_ops)
+        update_reg_ethalpy_ops!(H_iter, Pc_iter, params, t_ops, g_ops)
+        Q_new = g_ops.Q
+
+        if params.SUPG
+            Msupg = g_ops.Msupg
+            Fsupg = g_ops.Fsupg
+            A = (M + Msupg) + (Δt/2) * (S + Q_new)
+            R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
+        else
+            A = M + (Δt/2) * (S + Q_new)
+            R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
+        end
+
+        # surface Dirichlet
+        enforce_dirchlet!(A, R, Tsurf, size(A,1))
+        if !inflow
+            enforce_dirchlet!(A, R, ϕbase, 1)
+        end
+        H_iter .= A \ R
+
+        # convergence check
+        err_H  = norm(H_iter - H_prev) / (norm(H_prev) + eps)
+        err_Pc = norm(Pc_iter - Pc_prev) / (norm(Pc_prev) + eps)
+        err = max(err_H, err_Pc)
+        iter += 1
+    end
+
+    if iter == maxiter
+        @printf "Maximum non-linear iterations excited (reg)\n"
+    end
+
+    H .= H_iter
+    Pc .= Pc_iter
 end

@@ -70,6 +70,9 @@ let
     implicit = true
     # SUPG stabilization
     SUPG = true
+    # chi-regularization
+    # reg == true is implicit-only
+    reg = true
     # number of elements
     Ne = 64
     # basis order
@@ -84,7 +87,9 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 3*he
+    ϵ = 5*he
+    # permeability floor for the regularized (whole-domain) compaction solve
+    ϵp = 1e-3
     χfunc(H) = .5 * (1 + tanh(H/ϵ))
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
@@ -115,18 +120,7 @@ let
         Δt = min(he/abs(u(1)), (1/4) * he^2/κ)
     end
 
-    #--- interface info ---#
-    Γ = partition_temp_cold(H, p, z)
-    Γ_prev = Γ
-    Γc = Ne - Γ
-    Γ_nodes = EToN(Γ, p)
-    Nt = Γ_nodes[end]
-
-    nnzt = NNZ(Γ, Nbasis)
-    nnz = NNZ(Ne, Nbasis)
-    It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
-
-    # element tensor matrix used to assemble coupled matrices
+    # element tensor matrix used to assemble coupled matrices (shared)
     nodes = z[1:p+1]
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
     # TODO: FIGURE OUT IF THIS CORRECT BELOW
@@ -137,22 +131,52 @@ let
     mv = precompute_local_vec(Nbasis, p, nodes, lb)
     sv = precompute_local_vec(Nbasis, p, nodes, dlb)
 
+    nnz = NNZ(Ne, Nbasis)
 
-    ϕ = get_porosity(H, 0.0)
-    Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
-                                   ϕ, α, mt, kt, dm, It, Jt)
-    t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
-
-    # static global operators
+    # static global operators (shared by both paths)
     Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
     S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
-    Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     F = zeros(N)
     assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, a(.5), mv, F, false)
-    g_ops = gOps(spzeros(N,N),
-                 S, F, zeros(N),
-                 Mlump, M,
-                 spzeros(N,N), Kc)
+
+    #--- operator/interface setup
+    if !reg
+
+        Γ = partition_temp_cold(H, p, z)
+        Γ_prev = Γ
+        Γc = Ne - Γ
+        Γ_nodes = EToN(Γ, p)
+        Nt = Γ_nodes[end]
+
+        nnzt = NNZ(Γ, Nbasis)
+        It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
+
+        ϕ = get_porosity(H, 0.0)
+        Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
+                                       ϕ, α, mt, kt, dm, It, Jt)
+        t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
+
+        Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+        g_ops = gOps(spzeros(N,N),
+                     S, F, zeros(N),
+                     Mlump, M,
+                     spzeros(N,N), Kc)
+    else
+
+        Γ = 0
+        I, J = get_sparsity(Ne, nnz, Nbasis, p)
+
+        ϕ = max.(χfunc.(H) .* H, 0.0)
+        Kϕ, Mϕ, Fϕ = get_temperate_ops(Ne, N, nnz, Nbasis, p,
+                                       ϕ, α, mt, kt, dm, I, J)
+        t_ops = tOps(nnz, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
+        Q0     = sparse(I, J, ones(nnz), N, N); fill!(Q0.nzval, 0.0)
+        Msupg0 = sparse(I, J, ones(nnz), N, N); fill!(Msupg0.nzval, 0.0)
+        g_ops = gOps(Q0,
+                     S, F, zeros(N),
+                     Mlump, M,
+                     Msupg0, spzeros(N,N))
+    end
     
     params = (inflow = inflow,              
               implicit = implicit,
@@ -173,13 +197,21 @@ let
               η = η,
               g = g,
               κ = κ,
-              τ = τ)
+              τ = τ,
+              reg = reg,
+              ϵ = ϵ,
+              ϵp = ϵp,
+              χ = χfunc)
 
-    t_final = 2.0
+    t_final = 3.0
     tsteps = Int(ceil(t_final / Δt))
 
     for i = 1:tsteps
-        (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+        if !reg
+            (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
+        else
+            (H, Pc) = timestep_reg(H, Pc, params, t_ops, g_ops, Δt)
+        end
         #plot(H, z, label='H')
         #display(plot!(Pc, z, label="Pc"))
     end
@@ -187,8 +219,10 @@ let
     #plot(H, z, label='H')
     #display(plot!(Pc, z, label="Pc"))
 
-    Γ_nodes = EToN(Γ, p)
-    Nt = Γ_nodes[end]
+    if !reg
+        Γ_nodes = EToN(Γ, p)
+        Nt = Γ_nodes[end]
+    end
 
     nothing
 
