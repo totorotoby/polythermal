@@ -156,11 +156,12 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
 
         # compute new H and Pc k+1
         T = get_temp(H_iter, 0.0)
-        Γ_iter = partition_temp_cold(T0, params.p, z)
+        Γ_iter = partition_temp_cold(T, params.p, z)
+        Nt_iter = EToN(Γ_iter, params.p)[end]
         ϕ = get_porosity(H_iter, 0.0)
-        update_ϕ_ops!(Γ_iter, ϕ, Nt, params, t_ops)
-        solve_Pc!(Nt, Pc_iter, params, t_ops)
-        update_enthalpy_ops!(Γ0, Nt, Pc_iter, params, t_ops, g_ops)
+        update_ϕ_ops!(Γ_iter, ϕ, Nt_iter, params, t_ops)
+        solve_Pc!(Nt_iter, Pc_iter, params, t_ops)
+        update_enthalpy_ops!(Γ_iter, Nt_iter, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
 
         if params.SUPG
@@ -172,9 +173,11 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
             A = M + (Δt/2) * (S + Q_new)
             R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
         end
+
         enforce_dirchlet!(A, R, Tsurf, size(A,1))
+        
         if inflow
-            enforce_dirchlet!(A, R, 0.0, Nt)
+            enforce_dirchlet!(A, R, 0.0, Nt_iter)
         else
             enforce_dirchlet!(A, R, ϕbase, 1)
         end
@@ -187,11 +190,12 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
         err = max(err_H, err_Pc, err_Γ)
         iter += 1
     end
-
+    
+    
     if iter == maxiter
         @printf "Maximum non-linear iterations excited\n"
     end
-        
+    
     H .= H_iter
     Pc .= Pc_iter
 
