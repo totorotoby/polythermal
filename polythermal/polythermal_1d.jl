@@ -90,7 +90,7 @@ let
     he = (L-B)/Ne
     #regularization params
     ϵ = 2*he
-    ϵp = 1e-8
+    ϵp = 1e-3
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
     z = get_mesh(Ne, p, L, N, he, ref_nodes)

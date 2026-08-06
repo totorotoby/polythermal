@@ -69,6 +69,7 @@ function eval_Hχϕ!(H, eops, params)
     Ne = params.Ne
     Nq = params.Nq
     Nbasis = params.Nbasis
+    ϵp = params.ϵp
     Hq = eops.Hq
     χq = eops.χq
     ϕq = eops.ϕq
@@ -81,13 +82,8 @@ function eval_Hχϕ!(H, eops, params)
         Hq[(e-1)*Nq + 1: e*Nq] .= Hqloc
     end
 
-    χq = χfunc(Hq, params)
-    ϕq = χq .* Hq
-
-    #plot(H, z, label="H")
-    plot(Hq, χq, label="χ")
-    display(plot!(Hq, ϕq, label="ϕ"))
-    quit()
+    χq .= χfunc(Hq, params)
+    ϕq .= 1/2 * (Hq .+ sqrt.(Hq.^2 .+ ϵp^2))
     
 end
 
