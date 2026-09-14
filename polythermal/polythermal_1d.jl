@@ -10,6 +10,7 @@ mutable struct tOps
     nnzt::Int64
     Kϕ::SparseMatrixCSC{Float64, Int64}
     Mϕ::SparseMatrixCSC{Float64, Int64}
+    Mχ::SparseMatrixCSC{Float64, Int64}
     Fϕ::Vector{Float64}
     mt::Matrix{Float64}
     kt::Matrix{Float64}
@@ -38,14 +39,25 @@ let
         (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
 
     s(t) = 3t^2 - 2t^3
-    initial_enth(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
-    initial_temp(z) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
+    initial_enth(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    initial_temp(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
     initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
 
 
-    #---- physical parameters ----#
+    #--- Options ---#
+    # implicit or explict timestepping
+    implicit = true
+    # SUPG stabilization
+    SUPG = true
+    # chi-regularization
+    # reg == true is implicit-only
+    reg = true
+    # if DG then regularization is ignored
+    DG = true
     # inflow or outflow problem
     inflow = false
+    
+    #---- physical parameters ----#
     u(z) = nothing
     # velocity
     u(z) = inflow ? -1.0 : 1.0
@@ -65,35 +77,31 @@ let
     η = 1.0
 
     #---- numerical parameters ----#
-
-    # implicit or explict timestepping
-    implicit = true
-    # SUPG stabilization
-    SUPG = true
-    # chi-regularization
-    # reg == true is implicit-only
-    reg = true
     # number of elements
-    Ne = 64
+    #Nes = 8:8:8 + (8 * 8)
+    #for Ne in Nes
+    Ne = 16
     # basis order
-    p = 4
+    p = 2
     # number basis functions
     Nbasis = p + 1
     # number of nodes
-    N = p*Ne + 1
+    N = DG ? Ne * Nbasis : p*Ne + 1
     # domain boundarys [L, B]
     L = 1.0
     B = 0
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 5*he
+    ϵ = 8 * he
     # permeability floor for the regularized (whole-domain) compaction solve
-    ϵp = 1e-3
+    ϵp = 0
+    # strength of compaction pressure regularization
+    γ = 1
     χfunc(H) = .5 * (1 + tanh(H/ϵ))
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
-    z = get_mesh(Ne, p, L, N, he, ref_nodes)
+    z = get_mesh(Ne, p, L, N, he, ref_nodes, DG)
     #SUPG strength param
     τ = (he /2 * abs(u(.5)))
     #---- initial and boundary data ----#
@@ -106,9 +114,9 @@ let
 
     # initial enthalpy
     H = zeros(N)
-    H[:] = initial_enth.(z)
+    H[:] = initial_enth.(z, Tsurf)
     H1 = zeros(N)
-    H1[:] = initial_enth.(z)
+    H1[:] = initial_enth.(z, Tsurf)
 
     # compaction pressure
     Pc = zeros(N)
@@ -123,7 +131,6 @@ let
     # element tensor matrix used to assemble coupled matrices (shared)
     nodes = z[1:p+1]
     mt = precompute_local_tensor(Nbasis, p, nodes, lb, lb, lb)
-    # TODO: FIGURE OUT IF THIS CORRECT BELOW
     st = precompute_local_tensor(Nbasis, p, nodes, dlb, lb, lb)
     kt = precompute_local_tensor(Nbasis, p, nodes, dlb, dlb, lb)
     dm = precompute_local_mat(Nbasis, p, nodes, dlb, lb)
@@ -152,9 +159,8 @@ let
         It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
 
         ϕ = get_porosity(H, 0.0)
-        Kϕ, Mϕ, Fϕ = get_temperate_ops(Γ, N, nnzt, Nbasis, p,
-                                       ϕ, α, mt, kt, dm, It, Jt)
-        t_ops = tOps(nnzt, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
+        Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
+        t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
 
         Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
         g_ops = gOps(spzeros(N,N),
@@ -167,9 +173,8 @@ let
         I, J = get_sparsity(Ne, nnz, Nbasis, p)
 
         ϕ = max.(χfunc.(H) .* H, 0.0)
-        Kϕ, Mϕ, Fϕ = get_temperate_ops(Ne, N, nnz, Nbasis, p,
-                                       ϕ, α, mt, kt, dm, I, J)
-        t_ops = tOps(nnz, Kϕ, Mϕ, Fϕ, mt, kt, dm, km, st, sv)
+        Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
+        t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
         Q0     = sparse(I, J, ones(nnz), N, N); fill!(Q0.nzval, 0.0)
         Msupg0 = sparse(I, J, ones(nnz), N, N); fill!(Msupg0.nzval, 0.0)
         g_ops = gOps(Q0,
@@ -201,9 +206,10 @@ let
               reg = reg,
               ϵ = ϵ,
               ϵp = ϵp,
+              γ = γ,
               χ = χfunc)
 
-    t_final = 3.0
+    t_final = 2.7
     tsteps = Int(ceil(t_final / Δt))
 
     for i = 1:tsteps
@@ -216,14 +222,19 @@ let
         #display(plot!(Pc, z, label="Pc"))
     end
 
+    #=
     #plot(H, z, label='H')
     #display(plot!(Pc, z, label="Pc"))
-
+    open("upwards_advect_8elm.txt", "a") do io
+        writedlm(io, [z, H, Pc])
+    end
+    =#
+    
     if !reg
         Γ_nodes = EToN(Γ, p)
         Nt = Γ_nodes[end]
     end
-
-    nothing
-
+    #end
+    
+nothing
 end

@@ -91,7 +91,7 @@ function solve_reg_Pc!(Pc, params, t_ops)
     g = params.g
     Pcbase = params.Pcbase
 
-    A = -κ * δ .* t_ops.Kϕ - 1/η .* t_ops.Mϕ
+    A = -κ * δ .* t_ops.Kϕ - params.γ .* t_ops.Mχ - 1/η .* t_ops.Mϕ
     R = κ * g .* t_ops.Fϕ
     enforce_dirchlet!(A, R, Pcbase, 1)
 
@@ -242,16 +242,17 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
     err = Inf
 
     # previous timestep state
-    H_old = copy(H)
+    H0 = copy(H)
 
     # previous timestep operators
-    ϕ0 = params.χ.(H_old) .* H_old
-    update_reg_ϕ_ops!(ϕ0, params, t_ops)
+    χ0 = params.χ.(H0)
+    ϕ0 = χ0 .* H0
+    update_reg_ϕ_ops!(ϕ0, χ0, params, t_ops)
     solve_reg_Pc!(Pc, params, t_ops)
-    update_reg_ethalpy_ops!(H_old, Pc, params, t_ops, g_ops)
+    update_reg_ethalpy_ops!(H0, Pc, params, t_ops, g_ops)
     Q_old = copy(g_ops.Q)
 
-    H_iter  = copy(H_old)
+    H_iter  = copy(H0)
     Pc_iter = copy(Pc)
     H_prev  = similar(H_iter)
     Pc_prev = similar(Pc_iter)
@@ -262,8 +263,9 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
         Pc_prev .= Pc_iter
 
         # relinearize coupled operators at the current iterate
-        ϕ = params.χ.(H_iter) .* H_iter
-        update_reg_ϕ_ops!(ϕ, params, t_ops)
+        χiter = params.χ.(H_iter)
+        ϕ =  χiter .* H_iter
+        update_reg_ϕ_ops!(ϕ, χiter, params, t_ops)
         solve_reg_Pc!(Pc_iter, params, t_ops)
         update_reg_ethalpy_ops!(H_iter, Pc_iter, params, t_ops, g_ops)
         Q_new = g_ops.Q
@@ -272,10 +274,10 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
             Msupg = g_ops.Msupg
             Fsupg = g_ops.Fsupg
             A = (M + Msupg) + (Δt/2) * (S + Q_new)
-            R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H_old + Δt * (F + Fsupg)
+            R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H0 + Δt * (F + Fsupg)
         else
             A = M + (Δt/2) * (S + Q_new)
-            R = (M - (Δt/2) * (S + Q_old)) * H_old + Δt * F
+            R = (M - (Δt/2) * (S + Q_old)) * H0 + Δt * F
         end
 
         # surface Dirichlet

@@ -5,16 +5,22 @@ using Statistics
 using DataStructures
 using FastGaussQuadrature
 
-function get_mesh(Ne, p, L, N, he, ref_nodes)
-    
+function get_mesh(Ne, p, L, N, he, ref_nodes, DG)
+
     mesh = zeros(N)
-    for e in 0:Ne-1
-        bidx = e*p
-        for i in 1:p
-            mesh[bidx + i] = (he*ref_nodes[i] + he*(e + 1) + he*e)/2
+    if DG
+        for e in Ne
+            @show e
         end
+    else
+        for e in 0:Ne-1
+            bidx = e*p
+            for i in 1:p
+                mesh[bidx + i] = (he*ref_nodes[i] + he*(e + 1) + he*e)/2
+            end
+        end
+        mesh[end] = L
     end
-    mesh[end] = L
     return mesh
     
 end
@@ -375,29 +381,19 @@ function get_porosity(H, T_m)
     return max.(T_m, H)
 end
 
-function get_temperate_ops(Ne, N, nnzt, Nbasis, p,
-                           ϕ, α, mt, kt, dm, It, Jt)
-
-    ϕtemp = ϕ .+ .000001
-    
-    VKϕ = zeros(nnzt)
-    VMϕ = zeros(nnzt)
+function get_temperate_ops(N)
+                           
+    Kϕ = spzeros(N,N)
+    Mϕ = spzeros(N,N)
+    Mχ = spzeros(N,N)
     Fϕ = zeros(N)
-
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp, mt, VMϕ)
-    assemble_global_from_local_tensor!(Ne, Nbasis, p, ϕtemp.^α, kt, VKϕ)    
-    assemble_global_vec_from_local_mat!(Ne, Nbasis, p, ϕtemp.^α, dm, Fϕ)
-
-    Kϕ = sparse(It, Jt, VKϕ, N, N)
-    Mϕ = sparse(It, Jt, VMϕ, N, N)
-
-    return Kϕ, Mϕ, Fϕ
+    return Kϕ, Mϕ, Mχ, Fϕ
     
 end
 
 function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
-    ϕtemp = ϕ .+ 1e-8
+    ϕtemp = ϕ .+ params.ϵp
     
     assemble_global_from_local_tensor!(Γ, params.Nbasis, params.p,
                                        ϕtemp.^(params.α), t_ops.kt, t_ops.Kϕ, false)
@@ -437,15 +433,16 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
 end
 
-function update_reg_ϕ_ops!(ϕ, params, t_ops)
+function update_reg_ϕ_ops!(ϕ, χ, params, t_ops)
     
     ϕpos = max.(ϕ, 0.0)
-    ϕreg = ϕpos .+ params.ϵp
     
     assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
-                                       ϕreg.^(params.α), t_ops.kt, t_ops.Kϕ, false)
+                                       ϕpos.^(params.α), t_ops.kt, t_ops.Kϕ, false)
     assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
                                        ϕpos, t_ops.mt, t_ops.Mϕ, false)
+    assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
+                                       (1 .- χ), t_ops.mt, t_ops.Mχ, false)
     assemble_global_vec_from_local_mat!(params.Ne, params.Nbasis, params.p,
                                         ϕpos.^(params.α), t_ops.dm, t_ops.Fϕ)
 end
