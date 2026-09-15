@@ -4,6 +4,14 @@ using Printf
 include("assemble.jl")
 include("sol_tests.jl")
 
+function test_advect_DG!(S, M, b, h, Δt)
+    f(v) = M \ (S*v .+ b)
+    k1 = f(h)
+    k2 = f(h .+ Δt/2 .* k1)
+    k3 = f(h .+ Δt/2 .* k2)
+    k4 = f(h .+ Δt   .* k3)
+    h .= h .+ Δt/6 .* (k1 .+ 2k2 .+ 2k3 .+ k4)
+end
 
 
 function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)

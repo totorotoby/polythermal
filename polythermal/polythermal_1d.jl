@@ -51,11 +51,11 @@ let
     SUPG = true
     # chi-regularization
     # reg == true is implicit-only
-    reg = true
+    reg = false
     # if DG then regularization is ignored
     DG = true
     # inflow or outflow problem
-    inflow = false
+    inflow = true
     
     #---- physical parameters ----#
     u(z) = nothing
@@ -65,7 +65,7 @@ let
     Pe_inv(z) = 1.0
     # dissipation rate
     a(z) = 1.0
-    # thermal conductivity
+    # permeability
     κ = inflow ? 1.0 : 0.25
     # gravitational acceleration
     g = -1.0
@@ -80,7 +80,7 @@ let
     # number of elements
     #Nes = 8:8:8 + (8 * 8)
     #for Ne in Nes
-    Ne = 16
+    Ne = 32
     # basis order
     p = 2
     # number basis functions
@@ -93,7 +93,7 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 8 * he
+    ϵ = 1 * he
     # permeability floor for the regularized (whole-domain) compaction solve
     ϵp = 0
     # strength of compaction pressure regularization
@@ -101,7 +101,7 @@ let
     χfunc(H) = .5 * (1 + tanh(H/ϵ))
     # nodes
     ref_nodes, weights = gausslobatto(Nbasis)
-    z = get_mesh(Ne, p, L, N, he, ref_nodes, DG)
+    z = get_mesh(Ne, p, B, L, N, he, ref_nodes, DG)
     #SUPG strength param
     τ = (he /2 * abs(u(.5)))
     #---- initial and boundary data ----#
@@ -115,9 +115,7 @@ let
     # initial enthalpy
     H = zeros(N)
     H[:] = initial_enth.(z, Tsurf)
-    H1 = zeros(N)
-    H1[:] = initial_enth.(z, Tsurf)
-
+    
     # compaction pressure
     Pc = zeros(N)
 
@@ -138,51 +136,70 @@ let
     mv = precompute_local_vec(Nbasis, p, nodes, lb)
     sv = precompute_local_vec(Nbasis, p, nodes, dlb)
 
-    nnz = NNZ(Ne, Nbasis)
-
-    # static global operators (shared by both paths)
-    Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N)
-    S = get_advection_matrix(Ne, Nbasis, p, z, u, N)
+    # static global operators
+    Mlump, M = get_lumped_mass(Ne, Nbasis, p, z, N, DG)
+    
+    S = get_advection_matrix(Ne, Nbasis,
+                             p, z, u, N,
+                             DG, inflow,
+                             ϕbase, Tsurf)
     F = zeros(N)
-    assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, a(.5), mv, F, false)
+    assemble_global_static_vec_from_local_vec!(Ne, Nbasis,
+                                               p, a(.5),
+                                               mv, F, false,
+                                               DG)
 
     #--- operator/interface setup
-    if !reg
+    # continuous galerkin
+    if !DG
+        # continuous not regularized
+        if !reg
 
-        Γ = partition_temp_cold(H, p, z)
-        Γ_prev = Γ
-        Γc = Ne - Γ
-        Γ_nodes = EToN(Γ, p)
-        Nt = Γ_nodes[end]
+            Γ = partition_temp_cold(H, p, z)
+            Γ_prev = Γ
+            Γc = Ne - Γ
+            Γ_nodes = EToN(Γ, p)
+            Nt = Γ_nodes[end]
 
-        nnzt = NNZ(Γ, Nbasis)
-        It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
+            nnzt = NNZ(Γ, Nbasis)
+            It, Jt = get_sparsity(Γ, nnzt, Nbasis, p)
 
-        ϕ = get_porosity(H, 0.0)
-        Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
-        t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
+            ϕ = get_porosity(H, 0.0)
+            Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
+            t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
 
-        Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
-        g_ops = gOps(spzeros(N,N),
-                     S, F, zeros(N),
-                     Mlump, M,
-                     spzeros(N,N), Kc)
+            Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+            g_ops = gOps(spzeros(N,N),
+                         S, F, zeros(N),
+                         Mlump, M,
+                         spzeros(pN,N), Kc)
+            
+        # continuous regularized 
+        elseif reg
+
+            nnz = NNZ(Ne, Nbasis)
+            Γ = 0
+            I, J = get_sparsity(Ne, nnz, Nbasis, p)
+            ϕ = max.(χfunc.(H) .* H, 0.0)
+            Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
+            t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
+            Q0     = sparse(I, J, ones(nnz), N, N)
+            fill!(Q0.nzval, 0.0)
+            Msupg0 = sparse(I, J, ones(nnz), N, N)
+            fill!(Msupg0.nzval, 0.0)
+            g_ops = gOps(Q0,
+                         S, F, zeros(N),
+                         Mlump, M,
+                         Msupg0, spzeros(N,N))
+        end
+        
+    # Discontinuous galerkin
     else
 
-        Γ = 0
-        I, J = get_sparsity(Ne, nnz, Nbasis, p)
-
-        ϕ = max.(χfunc.(H) .* H, 0.0)
-        Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
-        t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
-        Q0     = sparse(I, J, ones(nnz), N, N); fill!(Q0.nzval, 0.0)
-        Msupg0 = sparse(I, J, ones(nnz), N, N); fill!(Msupg0.nzval, 0.0)
-        g_ops = gOps(Q0,
-                     S, F, zeros(N),
-                     Mlump, M,
-                     Msupg0, spzeros(N,N))
+        nnz = NNZDG(Ne, Nbasis)
+        
     end
-    
+
     params = (inflow = inflow,              
               implicit = implicit,
               SUPG = SUPG,
@@ -209,16 +226,29 @@ let
               γ = γ,
               χ = χfunc)
 
-    t_final = 2.7
+    t_final = 3
+    Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
+    #plt = plot()
+    #display(plot(plt, H, z, label="H"))
+    b = get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
     for i = 1:tsteps
+        test_advect_DG!(S, M, b, H, Δt)
+        #=
         if !reg
             (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         else
             (H, Pc) = timestep_reg(H, Pc, params, t_ops, g_ops, Δt)
         end
-        #plot(H, z, label='H')
+        =#
+        plt = plot()
+        nodes = 1:Nbasis
+        for e = 1:Ne
+            plot!(plt, H[nodes], z[nodes], color=:orange, legend=false, xlims=[-0.5, .5])
+            nodes = nodes[end] + 1 : nodes[end] + Nbasis
+        end
+        display(plt)
         #display(plot!(Pc, z, label="Pc"))
     end
 
@@ -229,11 +259,12 @@ let
         writedlm(io, [z, H, Pc])
     end
     =#
-    
+    #=
     if !reg
         Γ_nodes = EToN(Γ, p)
         Nt = Γ_nodes[end]
     end
+    =#
     #end
     
 nothing

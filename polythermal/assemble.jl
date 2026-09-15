@@ -5,13 +5,17 @@ using Statistics
 using DataStructures
 using FastGaussQuadrature
 
-function get_mesh(Ne, p, L, N, he, ref_nodes, DG)
+function get_mesh(Ne, p, B, L, N, he, ref_nodes, DG)
 
     mesh = zeros(N)
     if DG
-        for e in Ne
-            @show e
+        sref = (he .* ref_nodes)/2
+        cref = B - sref[1]
+        href = sref[end] - sref[1]
+        for e in 0:Ne-1
+            mesh[e*(p+1) + 1 : (e+1) * (p+1)] = cref .+ e .* href .+ sref
         end
+
     else
         for e in 0:Ne-1
             bidx = e*p
@@ -22,9 +26,7 @@ function get_mesh(Ne, p, L, N, he, ref_nodes, DG)
         mesh[end] = L
     end
     return mesh
-    
 end
-
 
 #=
 gaussian integration of funcs multiplied together with args for each function
@@ -147,7 +149,7 @@ function get_sparsity(Ne, nnz, Nbasis, p)
 end
 
 
-function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition)
+function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition, DG)
 
     if !addition
         F[:] .= 0
@@ -160,7 +162,6 @@ function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, ad
         end
     end
 end
-
 
 
 function assemble_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M, addition)
@@ -243,28 +244,90 @@ end
 
 function assemble_matrix!(Ne, Nbasis, p,
                           x, func1, func2, k,
-                          I, J, V)
-
+                          I, J, V, DG)
+    
     for e in 1:Ne
         for i in 1:Nbasis
-            row = (p*e) + (i-p)
+            row = DG ? ((p+1)*(e-1) + i) : (p*e) + (i-p)
             for j in 1:Nbasis
-                col = (p*e) + (j-p)
-                nodes = EToX(e, p, x)
+                col = DG ? ((p+1)*(e-1) + j) : (p*e) + (j-p)
+                nodes = DG ? x[(e - 1)*Nbasis+1:e*Nbasis] : EToX(e, p, x)
                 v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), k)
-                idx = inCOO(I, J, row, col)
-                if idx > 0 
-                    V[idx] += v
-                else
-                    push!(I, row)
-                    push!(J, col)
-                    push!(V, v)
-                end
+                add_to_V!(I, J, V, v, row, col)
             end
         end
     end
 end
 
+
+function add_to_V!(I, J, V, v, row, col)
+    
+    idx = inCOO(I, J, row, col)
+    if idx > 0 
+        V[idx] += v
+    else
+        push!(I, row)
+        push!(J, col)
+        push!(V, v)
+    end
+end
+
+function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕbase, Tsurf)
+
+    u = u(.5)
+
+    # Something might be messed up witht the signs here.
+    for e in 1:Ne
+        
+        if e != 1
+            # left faces of every element 
+            #   idxL -> <- idxR
+            # ---------*---------*---------
+            #  e - 1      e       e + 1
+            idxR = Nbasis * (e-1) + 1
+            idxL = Nbasis * (e-1)
+
+            add_to_V!(I, J, advFlux, -(1/2 * u - 1/2 * abs(u)), idxR, idxR)
+            add_to_V!(I, J, advFlux, -(1/2 * u + 1/2 * abs(u)), idxR, idxL)
+        end
+        
+        if e != Ne
+
+            # right faces of every element
+                      #   idxL -> <- idxR
+            # ---------*---------*---------
+            #  e - 1      e       e + 1
+            
+            idxL = Nbasis * (e)
+            idxR = idxL + 1
+
+            add_to_V!(I, J, advFlux, 1/2 * u + 1/2 * abs(u), idxL, idxL)
+            add_to_V!(I, J, advFlux, 1/2 * u - 1/2 * abs(u), idxL, idxR)
+        end
+
+        # add outflow data
+        if e == 1 && inflow
+            add_to_V!(I, J, advFlux, -u, 1, 1)
+        end
+        if e == Ne && !inflow
+            add_to_V!(I, J, advFlux, u, Ne*Nbasis, Ne*Nbasis)
+        end
+        
+    end
+end
+
+function get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
+    u = u(.5)
+    b = zeros(N)
+    # u<0, inflow at z=1, data = Tsurf
+    if inflow            
+        b[Ne*Nbasis] = -u * Tsurf
+    # u>0: inflow at z=0, data = ϕbase
+    else
+        b[1] = u * ϕbase
+    end
+    return b
+end
 
 function assemble_forcing!(Ne, Nbasis, p, x, func1, func2, forcing, F)
     for e in 1:Ne
@@ -372,6 +435,7 @@ end
 EToX(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 EToN(e, p) = (e-1)*p + 1 : (e-1)*p + p + 1
 NNZ(Ne, Nbasis) = Ne * (Nbasis)^2 - Ne + 1
+NNZDG(Ne, Nbasis) = Ne * (Nbasis)^2
 
 function get_temp(H, T_m)
     return min.(T_m, H)
@@ -478,7 +542,7 @@ function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)
     end
 end
 
-function get_lumped_mass(Ne, Nbasis, p, z, N)
+function get_lumped_mass(Ne, Nbasis, p, z, N, DG)
     
     I = Int64[]
     J = Int64[]
@@ -487,11 +551,12 @@ function get_lumped_mass(Ne, Nbasis, p, z, N)
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, lb,
                      one,
-                     I, J, Vmass)
+                     I, J, Vmass, DG)
 
     for nz = 1:length(I)
         diag[I[nz]] += Vmass[nz]
     end
+    
     for i = 1:N
         diag[i] = 1/diag[i]
     end
@@ -516,15 +581,33 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
     return Kc
 end
 
-function get_advection_matrix(Ne, Nbasis, p, z, u, N)
+function get_advection_matrix(Ne, Nbasis, p, z, u, N, DG, inflow, ϕbase, Tsurf)
     # generate advective (first derivative) operator matrix
     I = Int64[]
     J = Int64[]
     Vadv = Float64[]
-    assemble_matrix!(Ne, Nbasis, p,
-                     z, lb, dlb, u,
-                     I, J, Vadv)
-    S = sparse(I, J, Vadv, N, N)
-    
+    if !DG
+        assemble_matrix!(Ne, Nbasis, p,
+                         z, lb, dlb, u,
+                         I, J, Vadv, DG)
+
+        S = sparse(I, J, Vadv, N, N)
+        
+    else
+        assemble_matrix!(Ne, Nbasis, p,
+                         z, dlb, lb, u,
+                         I, J, Vadv, DG)
+
+        S = sparse(I, J, Vadv, N, N)
+        
+        I = Int64[]
+        J = Int64[]
+        advFlux = Float64[]
+        assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕbase, Tsurf)
+        Sflux = sparse(I, J, advFlux, N, N)
+        S .= S .- Sflux
+        
+    end
+
     return S
 end
