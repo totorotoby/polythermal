@@ -276,7 +276,6 @@ function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕ
 
     u = u(.5)
 
-    # Something might be messed up witht the signs here.
     for e in 1:Ne
         
         if e != 1

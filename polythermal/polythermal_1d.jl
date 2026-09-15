@@ -39,7 +39,7 @@ let
         (a.(z)/u.(z).^2) * (exp(u.(z) * (H-B)) - exp(u.(z) * (z - B)))
 
     s(t) = 3t^2 - 2t^3
-    initial_enth(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
+    initial_enth(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.4 * z + .2
     initial_temp(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
     initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
 
@@ -80,9 +80,9 @@ let
     # number of elements
     #Nes = 8:8:8 + (8 * 8)
     #for Ne in Nes
-    Ne = 32
+    Ne = 64
     # basis order
-    p = 2
+    p = 5
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -149,6 +149,7 @@ let
                                                mv, F, false,
                                                DG)
 
+    display(S)
     #--- operator/interface setup
     # continuous galerkin
     if !DG
@@ -226,13 +227,15 @@ let
               γ = γ,
               χ = χfunc)
 
-    t_final = 3
+    t_final = 2
     Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
-    #plt = plot()
-    #display(plot(plt, H, z, label="H"))
+    plt = plot()
+    display(plot(plt, H, z, label="H"))
     b = get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
+    #operator_eigens(S, M)
+
     for i = 1:tsteps
         test_advect_DG!(S, M, b, H, Δt)
         #=

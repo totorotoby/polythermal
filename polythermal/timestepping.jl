@@ -13,7 +13,12 @@ function test_advect_DG!(S, M, b, h, Δt)
     h .= h .+ Δt/6 .* (k1 .+ 2k2 .+ 2k3 .+ k4)
 end
 
-
+function operator_eigens(S, M)
+    Minv = inv(Matrix(M))
+    F = eigen(Minv * S)
+    display(scatter(F.values))
+end
+    
 function timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
 
     p = params.p
