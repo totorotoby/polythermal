@@ -149,7 +149,7 @@ function get_sparsity(Ne, nnz, Nbasis, p)
 end
 
 
-function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition, DG)
+function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition)
 
     if !addition
         F[:] .= 0
@@ -325,6 +325,171 @@ function get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
     else
         b[1] = u * ϕbase
     end
+    return b
+end
+
+function assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, Tsurf, ϕbase)
+
+    for e in 1:Ne
+
+        # interior face shared by my element (m) and neighboring (n) element
+        if e != 1
+            
+            # my and neighbor element global node indexing
+            m_nodes = ((e - 2) * Nbasis + 1) : ((e - 1) * Nbasis)
+            n_nodes = ((e - 1) * Nbasis + 1) : (e * Nbasis)
+            
+            # m and n element face index
+            m_face = m_nodes[end]
+            n_face = n_nodes[1]
+            
+            # m and n element coordinates
+            z_m = z[m_nodes]
+            z_n = z[n_nodes]
+            
+            # face coordinate
+            z_face = z[(e - 1) * Nbasis + 1]
+
+            # consistency: {dh/dz}[ψ]
+            # for each side (m and n) this is -1/2 dh/dz (ψ = 1 only on the face),
+            # which when adding to the matrix need the d/dz operator and h is
+            # held in the vector meaning distrbute differentiation over the columns
+            # and not rows. Distrubting out consistency gives 4 terms.
+            
+            for j in 1:Nbasis
+                # left m face dependent on element m
+                add_to_V!(I, J, Vdiff, - .5 *k * dlb(z_face, j, z_m), m_face, m_nodes[j])
+                # left m face dependent on element n
+                add_to_V!(I, J, Vdiff, - .5 *k * dlb(z_face, j, z_n), m_face, n_nodes[j])
+                # right n element dependent on element n
+                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, j, z_m), n_face, m_nodes[j])
+                # right n element dependent on element m
+                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, j, z_n), n_face, n_nodes[j])
+            end
+
+            # penalty: σ (h^m - h^n)
+            # left face penalty coupling
+            add_to_V!(I, J, Vdiff, σ, m_face, m_face)
+            add_to_V!(I, J, Vdiff, -σ, m_face, n_face)
+            # right face penalty coupling
+            add_to_V!(I, J, Vdiff, σ, n_face, n_face)
+            add_to_V!(I, J, Vdiff, -σ, n_face, m_face)
+
+            # adjoint consistency: {dψ/dz}[h]
+            # this is the opposite of consistency in the sense that we only pull have from
+            # the single face node, but the derivative of the test function is distributed
+            # over the rows
+
+            for i in 1:Nbasis
+                # left m element dependent on face m
+                add_to_V!(I, J, Vdiff, - .5 * k * dlb(z_face, i, z_m), m_nodes[i], m_face)
+                # left m element dependent on face n
+                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, i, z_m), m_nodes[i], n_face)
+                # left n element dependent on face m
+                add_to_V!(I, J, Vdiff, - .5 * k * dlb(z_face, i, z_n), n_nodes[i], m_face)
+                # right n element dependent on face n
+                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, i, z_n), n_nodes[i], n_face)
+            end
+        end
+
+        # dirichlet boundary faces
+        if e == 1 && !inflow
+            
+            m_nodes = 1 : Nbasis
+            m_z = z[m_nodes]
+            f = m_nodes[1]
+            
+            for j in 1:Nbasis
+                d = dlb(z_f, j, z_B)
+                # consistency
+                add_to_V!(I, J, Vdiff, k  * d, f, B_nodes[j])
+                # adjoint consistency
+                add_to_V!(I, J, Vdiff, k  * d, B_nodes[j], f)
+            end
+            add_to_V!(I, J, Vdiff, σ, f, f)
+        end
+        
+        if e == Ne && inflow
+            
+            m_nodes = ((Ne-1)*Nbasis + 1) : (Ne*Nbasis)
+            m_z = z[m_nodes]
+            f = m_nodes[end]
+            
+            for j in 1:Nbasis
+                d = dlb(z_f, j, m_z)
+                # consistency
+                add_to_V!(I, J, Vdiff, -k * d, f, m_nodes[j])
+                # adjoint consistency
+                add_to_V!(I, J, Vdiff, -k * d, m_nodes[j], f)
+            end
+            # penalty
+            add_to_V!(I, J, Vdiff, σ, f, f)
+        end
+    end
+end
+
+# Assemble the full DG diffusion matrix K = (block volume stiffness) + (SIPG faces).
+function get_diffusion_matrix_DG(Ne, Nbasis, p, z, k, N, σ, inflow, Tsurf, ϕbase)
+    I = Int64[]
+    J = Int64[]
+    Vdiff = Float64[]
+    
+    assemble_matrix!(Ne, Nbasis, p, z, dlb, dlb, k, I, J, Vdiff, true)
+    assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, Tsurf, ϕbase)
+    K = sparse(I, J, Vdiff, N, N)
+    
+    return K
+end
+
+function get_diffusion_boundary(N, Ne, Nbasis, p, z, k, σ, inflow, Tsurf, ϕbase)
+    
+    b = zeros(N)
+
+    surf_nodes = (Ne - 1) * Nbasis + 1 : Ne * Nbasis
+    surf_z = z[surf_nodes]
+    surf_face = z[Ne * Nbasis]
+
+    for i in 1:Nbasis
+        b[surf_nodes[i]] = -k * dlb(surf_face, i, surf_nodes) * Tsurf
+    end
+    
+    b[Ne * Nbasis] =+ σ * Tsurf
+
+    if !inflow
+        
+        base_nodes = 1 : Nbasis
+        base_z = z[base_nodes]
+        base_face = z[1]
+
+        for i in 1:Nbasis
+            b[base_nodes[i]] = k * dlb(base_face, i, base_nodes) * ϕbase
+        end
+
+        b[1] =+ σ * ϕbase
+        
+    end
+    
+    return b
+end
+
+function assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕ, α, σ, Pcbase)
+    for e in 1:Ne
+        if e != 1
+            
+            m_nodes = ((e-2)*Nbasis + 1) : ((e-1)*Nbasis)
+            n_nodes = ((e-1)*Nbasis + 1) : ( e   *Nbasis)
+            z_f     = z[(e-1)*Nbasis + 1]
+
+        end
+        
+        # Pcbase boundary
+        if e == 1
+        end
+    end
+end
+
+function get_compaction_boundary(N, Ne, Nbasis, p, z, ϕ, α, κ, δ, σ, Pcbase)
+    b = zeros(N)
     return b
 end
 
@@ -508,6 +673,37 @@ function update_reg_ϕ_ops!(ϕ, χ, params, t_ops)
                                        (1 .- χ), t_ops.mt, t_ops.Mχ, false)
     assemble_global_vec_from_local_mat!(params.Ne, params.Nbasis, params.p,
                                         ϕpos.^(params.α), t_ops.dm, t_ops.Fϕ)
+end
+
+function update_dg_ϕ_ops!(ϕ, χ, params, t_ops)
+    
+    Ne = params.Ne
+    Nbasis = params.Nbasis
+    p = params.p
+    z = params.z
+    N = params.N
+    α = params.α
+    κ = params.κ
+    δ = params.δ
+    Pcbase = params.Pcbase
+
+    # penalty parameter
+    σ = 10.0 * p^2 / (z[Nbasis+1] - z[1])
+
+    ϕpos = max.(ϕ, 0.0)
+
+    # reuse regularized volume operators for Pc
+    update_reg_ϕ_ops!(ϕ, χ, params, t_ops)
+
+    # add SIPG face terms on
+    I = Int64[]
+    J = Int64[]
+    Vpc = Float64[]
+    
+    assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕpos, α, σ, Pcbase)
+    t_ops.Kϕ = t_ops.Kϕ .+ sparse(I, J, Vpc, N, N)
+
+    t_ops.bpc = get_compaction_boundary(N, Ne, Nbasis, p, z, ϕpos, α, κ, δ, σ, Pcbase)
 end
 
 function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)

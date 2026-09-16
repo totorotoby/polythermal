@@ -18,6 +18,7 @@ mutable struct tOps
     km::Matrix{Float64}
     st::Matrix{Float64}
     sv::Vector{Float64}
+    bpc::Vector{Float64}
 end
 
 mutable struct gOps
@@ -80,9 +81,9 @@ let
     # number of elements
     #Nes = 8:8:8 + (8 * 8)
     #for Ne in Nes
-    Ne = 64
+    Ne = 3
     # basis order
-    p = 5
+    p = 2
     # number basis functions
     Nbasis = p + 1
     # number of nodes
@@ -93,7 +94,7 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 1 * he
+    ϵ = 5 * he
     # permeability floor for the regularized (whole-domain) compaction solve
     ϵp = 0
     # strength of compaction pressure regularization
@@ -104,6 +105,8 @@ let
     z = get_mesh(Ne, p, B, L, N, he, ref_nodes, DG)
     #SUPG strength param
     τ = (he /2 * abs(u(.5)))
+    # SIPG penalty (DG diffusion); scale ~ C * k * p^2 / he
+    σ = 10.0 * p^2 / he
     #---- initial and boundary data ----#
     # surface temperature
     Tsurf = inflow ? -.1 : -.5
@@ -146,10 +149,8 @@ let
     F = zeros(N)
     assemble_global_static_vec_from_local_vec!(Ne, Nbasis,
                                                p, a(.5),
-                                               mv, F, false,
-                                               DG)
+                                               mv, F, false)
 
-    display(S)
     #--- operator/interface setup
     # continuous galerkin
     if !DG
@@ -167,9 +168,10 @@ let
 
             ϕ = get_porosity(H, 0.0)
             Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
-            t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
+            t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
 
             Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+            error()
             g_ops = gOps(spzeros(N,N),
                          S, F, zeros(N),
                          Mlump, M,
@@ -183,24 +185,37 @@ let
             I, J = get_sparsity(Ne, nnz, Nbasis, p)
             ϕ = max.(χfunc.(H) .* H, 0.0)
             Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
-            t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv)
-            Q0     = sparse(I, J, ones(nnz), N, N)
+            t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
+            Q = sparse(I, J, ones(nnz), N, N)
             fill!(Q0.nzval, 0.0)
-            Msupg0 = sparse(I, J, ones(nnz), N, N)
-            fill!(Msupg0.nzval, 0.0)
-            g_ops = gOps(Q0,
+            Msupg = sparse(I, J, ones(nnz), N, N)
+            fill!(Msupg.nzval, 0.0)
+            g_ops = gOps(Q,
                          S, F, zeros(N),
                          Mlump, M,
-                         Msupg0, spzeros(N,N))
+                         Msupg, spzeros(N,N))
         end
         
     # Discontinuous galerkin
     else
 
         nnz = NNZDG(Ne, Nbasis)
+        Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
+        t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
+
+        K = get_diffusion_matrix_DG(Ne, Nbasis, p, z, one, N, σ, inflow, Tsurf, ϕbase)
+        Q = spzeros(N, N)
         
+        g_ops = gOps(Q,
+                     S, F, zeros(N),
+                     Mlump, M,
+                     spzeros(N,N), K)
+
+        b = get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase) .+
+            get_diffusion_boundary(N, Ne, Nbasis, p, z, one, σ, inflow, Tsurf, ϕbase)
     end
 
+    
     params = (inflow = inflow,              
               implicit = implicit,
               SUPG = SUPG,
@@ -228,31 +243,34 @@ let
               χ = χfunc)
 
     t_final = 2
-    Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
+    #Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
-    plt = plot()
-    display(plot(plt, H, z, label="H"))
-    b = get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
     #operator_eigens(S, M)
-
     for i = 1:tsteps
-        test_advect_DG!(S, M, b, H, Δt)
-        #=
-        if !reg
+        
+        #test_advect_DG!(S, M, b, H, Δt)
+
+        if DG
+            timestep_DG!(H, Pc, b, params, t_ops, g_ops, Δt)
+        elseif !reg
             (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         else
             (H, Pc) = timestep_reg(H, Pc, params, t_ops, g_ops, Δt)
         end
-        =#
-        plt = plot()
-        nodes = 1:Nbasis
-        for e = 1:Ne
-            plot!(plt, H[nodes], z[nodes], color=:orange, legend=false, xlims=[-0.5, .5])
-            nodes = nodes[end] + 1 : nodes[end] + Nbasis
+
+        if DG
+            plt = plot()
+            nodes = 1:Nbasis
+            for e = 1:Ne
+                plot!(plt, H[nodes], z[nodes], color=:orange, legend=false, xlims=[-0.5, .5])
+                nodes = nodes[end] + 1 : nodes[end] + Nbasis
+            end
+            display(plt)
+        else
+            plot(H, z, label="H")
+            display(plot!(Pc, z, label="Pc"))
         end
-        display(plt)
-        #display(plot!(Pc, z, label="Pc"))
     end
 
     #=
