@@ -53,9 +53,9 @@ let
     # reg == true is implicit-only
     reg = true
     # if DG then regularization is ignored
-    DG = true
+    DG = false
     # inflow or outflow problem
-    inflow = false
+    inflow = true
     
     #---- physical parameters ----#
     u(z) = nothing
@@ -80,7 +80,7 @@ let
     # number of elements
     #Nes = 8:8:8 + (8 * 8)
     #for Ne in Nes
-    Ne = 16
+    Ne = 64
     # basis order
     p = 2
     # number basis functions
@@ -93,7 +93,7 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 8 * he
+    ϵ = 1 * he
     # permeability floor for the regularized (whole-domain) compaction solve
     ϵp = 0
     # strength of compaction pressure regularization
