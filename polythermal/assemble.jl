@@ -305,13 +305,15 @@ function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕ
         end
 
         # add outflow data
+        # purely for testing upwinding
+        #=
         if e == 1 && inflow
             add_to_V!(I, J, advFlux, -u, 1, 1)
         end
+        =#
         if e == Ne && !inflow
             add_to_V!(I, J, advFlux, u, Ne*Nbasis, Ne*Nbasis)
         end
-        
     end
 end
 
@@ -319,10 +321,13 @@ function get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
     u = u(.5)
     b = zeros(N)
     # u<0, inflow at z=1, data = Tsurf
+    # purely for testing upwinding
+    #=
     if inflow            
-        b[Ne*Nbasis] = -u * Tsurf
+       b[Ne*Nbasis] = -u * Tsurf
     # u>0: inflow at z=0, data = ϕbase
-    else
+    =#
+    if !inflow
         b[1] = u * ϕbase
     end
     return b
@@ -367,16 +372,8 @@ function assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, 
                 add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, j, z_n), n_face, n_nodes[j])
             end
 
-            # penalty: σ (h^m - h^n)
-            # left face penalty coupling
-            add_to_V!(I, J, Vdiff, σ, m_face, m_face)
-            add_to_V!(I, J, Vdiff, -σ, m_face, n_face)
-            # right face penalty coupling
-            add_to_V!(I, J, Vdiff, σ, n_face, n_face)
-            add_to_V!(I, J, Vdiff, -σ, n_face, m_face)
-
             # adjoint consistency: {dψ/dz}[h]
-            # this is the opposite of consistency in the sense that we only pull have from
+            # this is the opposite of consistency in the sense that we only pull h from
             # the single face node, but the derivative of the test function is distributed
             # over the rows
 
@@ -392,43 +389,34 @@ function assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, 
             end
         end
 
-        # dirichlet boundary faces
-        if e == 1 && !inflow
-            
-            m_nodes = 1 : Nbasis
-            m_z = z[m_nodes]
-            f = m_nodes[1]
-            
-            for j in 1:Nbasis
-                d = dlb(z_f, j, z_B)
-                # consistency
-                add_to_V!(I, J, Vdiff, k  * d, f, B_nodes[j])
-                # adjoint consistency
-                add_to_V!(I, J, Vdiff, k  * d, B_nodes[j], f)
-            end
-            add_to_V!(I, J, Vdiff, σ, f, f)
-        end
+        # penalty: σ (h^m - h^n)
+        # left face penalty coupling
+        add_to_V!(I, J, Vdiff, σ, m_face, m_face)
+        add_to_V!(I, J, Vdiff, -σ, m_face, n_face)
+        # right face penalty coupling
+        add_to_V!(I, J, Vdiff, -σ, n_face, m_face)
+        add_to_V!(I, J, Vdiff, σ, n_face, n_face)
         
-        if e == Ne && inflow
-            
-            m_nodes = ((Ne-1)*Nbasis + 1) : (Ne*Nbasis)
-            m_z = z[m_nodes]
-            f = m_nodes[end]
-            
-            for j in 1:Nbasis
-                d = dlb(z_f, j, m_z)
-                # consistency
-                add_to_V!(I, J, Vdiff, -k * d, f, m_nodes[j])
-                # adjoint consistency
-                add_to_V!(I, J, Vdiff, -k * d, m_nodes[j], f)
-            end
-            # penalty
-            add_to_V!(I, J, Vdiff, σ, f, f)
+
+        # surface dirichlet condition
+        m_nodes = ((Ne-1)*Nbasis + 1) : (Ne*Nbasis)
+        m_z = z[m_nodes]
+        f = m_nodes[end]
+        z_f = z[f]
+        
+        for j in 1:Nbasis
+            d = dlb(z_f, j, m_z)
+            # consistency
+            add_to_V!(I, J, Vdiff, -k * d, f, m_nodes[j])
+            # adjoint consistency
+            add_to_V!(I, J, Vdiff, -k * d, m_nodes[j], f)
         end
+        # penalty
+        add_to_V!(I, J, Vdiff, σ, f, f)
+        
     end
 end
 
-# Assemble the full DG diffusion matrix K = (block volume stiffness) + (SIPG faces).
 function get_diffusion_matrix_DG(Ne, Nbasis, p, z, k, N, σ, inflow, Tsurf, ϕbase)
     I = Int64[]
     J = Int64[]
@@ -444,7 +432,8 @@ end
 function get_diffusion_boundary(N, Ne, Nbasis, p, z, k, σ, inflow, Tsurf, ϕbase)
     
     b = zeros(N)
-
+    
+    # surface dirichlet condition
     surf_nodes = (Ne - 1) * Nbasis + 1 : Ne * Nbasis
     surf_z = z[surf_nodes]
     surf_face = z[Ne * Nbasis]
@@ -453,27 +442,14 @@ function get_diffusion_boundary(N, Ne, Nbasis, p, z, k, σ, inflow, Tsurf, ϕbas
         b[surf_nodes[i]] = -k * dlb(surf_face, i, surf_nodes) * Tsurf
     end
     
-    b[Ne * Nbasis] =+ σ * Tsurf
-
-    if !inflow
-        
-        base_nodes = 1 : Nbasis
-        base_z = z[base_nodes]
-        base_face = z[1]
-
-        for i in 1:Nbasis
-            b[base_nodes[i]] = k * dlb(base_face, i, base_nodes) * ϕbase
-        end
-
-        b[1] =+ σ * ϕbase
-        
-    end
+    b[Ne * Nbasis] += σ * Tsurf
     
     return b
 end
 
 function assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕ, α, σ, Pcbase)
     for e in 1:Ne
+        
         if e != 1
             
             m_nodes = ((e-2)*Nbasis + 1) : ((e-1)*Nbasis)
@@ -484,6 +460,7 @@ function assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕ, α, σ, Pcba
         
         # Pcbase boundary
         if e == 1
+            
         end
     end
 end
@@ -762,14 +739,14 @@ function get_lumped_mass(Ne, Nbasis, p, z, N, DG)
     return Mlump, M
 end
     
-function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
+function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N, DG)
     # generate diffusion (second derivative) operator matrix
     I = Int64[]
     J = Int64[]
     Vdiff = Float64[]
     assemble_matrix!(Γc, Nbasis, p,
                      z, dlb, dlb, one,
-                     I, J, Vdiff)
+                     I, J, Vdiff, DG)
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
     Kc = sparse(I,J, Vdiff, N,N)

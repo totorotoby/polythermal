@@ -13,61 +13,6 @@ function test_advect_DG!(S, M, b, h, Δt)
     h .= h .+ Δt/6 .* (k1 .+ 2k2 .+ 2k3 .+ k4)
 end
 
-function timestep_DG!(H, Pc, b, params, t_ops, g_ops, Δt, tol=1e-8, maxiter=200)
-    M = g_ops.M
-    S = g_ops.S
-    K = g_ops.Kc
-    F = g_ops.F
-
-    eps  = 1e-12
-    iter = 0
-    err  = Inf
-
-    H0 = copy(H)
-    χ0 = params.χ.(H0)
-    ϕ0 = χ0 .* H0
-    update_dg_ϕ_ops!(ϕ0, χ0, params, t_ops)
-    solve_Pc_DG!(Pc, params, t_ops)
-
-    Q_old = copy(g_ops.Q)
-
-    H_iter  = copy(H0)
-    Pc_iter = copy(Pc)
-    H_prev  = similar(H_iter)
-    Pc_prev = similar(Pc_iter)
-
-    while err > tol && iter < maxiter
-        H_prev  .= H_iter
-        Pc_prev .= Pc_iter
-
-        χiter = params.χ.(H_iter)
-        ϕ     = χiter .* H_iter
-        update_dg_ϕ_ops!(ϕ, χiter, params, t_ops)
-        solve_Pc_DG!(Pc_iter, params, t_ops)
-
-        Q_new = g_ops.Q
-
-        L_new = S .+ K .+ Q_new
-        L_old = S .+ K .+ Q_old
-        A = M .+ (Δt/2) .* L_new
-        R = (M .- (Δt/2) .* L_old) * H0 .+ Δt .* (F .+ b)
-        H_iter .= A \ R
-
-        err_H  = norm(H_iter  .- H_prev)  / (norm(H_prev)  + eps)
-        err_Pc = norm(Pc_iter .- Pc_prev) / (norm(Pc_prev) + eps)
-        err = max(err_H, err_Pc)
-        iter += 1
-    end
-
-    if iter == maxiter
-        @printf "timestep_DG!: max Picard iterations reached\n"
-    end
-
-    H  .= H_iter
-    Pc .= Pc_iter
-    return H
-end
-
 function operator_eigens(S, M)
     Minv = inv(Matrix(M))
     F = eigen(Minv * S)
@@ -142,7 +87,6 @@ function solve_Pc!(Nt, Pc, params, t_ops)
     Mϕ = @view t_ops.Mϕ[1:Nt, 1:Nt]
     Fϕ = @view t_ops.Fϕ[1:Nt]
 
-    
     A = -κ * δ .* Kϕ - 1/η .* Mϕ
     R = κ * g .* Fϕ
     enforce_dirchlet!(A, R, Pcbase, 1)
@@ -301,7 +245,7 @@ function picard!(H, Pc, Γ, params, t_ops, g_ops,
     end
 
     if iter == maxiter
-        @printf "Maximum non-linear iterations excited\n"
+        @printf "Maximum non-linear iterations exceeded\n"
     end
         
     H .= H_iter
@@ -375,9 +319,67 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
     end
 
     if iter == maxiter
-        @printf "Maximum non-linear iterations excited (reg)\n"
+        @printf "Maximum non-linear iterations exceeded (reg)\n"
     end
 
     H .= H_iter
     Pc .= Pc_iter
+end
+
+# still need to figure out how diffusion coeffcient works
+function timestep_DG!(H, Pc, b, params, t_ops, g_ops, Δt, tol=1e-8, maxiter=200)
+    M = g_ops.M
+    S = g_ops.S
+    K = g_ops.Kc
+    F = g_ops.F
+
+    eps  = 1e-12
+    iter = 0
+    err  = Inf
+
+    H0 = copy(H)
+    χ0 = params.χ.(H0)
+    ϕ0 = χ0 .* H0
+    update_dg_ϕ_ops!(ϕ0, χ0, params, t_ops)
+    solve_Pc_DG!(Pc, params, t_ops)
+
+    Q_old = copy(g_ops.Q)
+    # need to still update Q i.e. contract with Pc
+    
+    H_iter  = copy(H0)
+    Pc_iter = copy(Pc)
+    H_prev  = similar(H_iter)
+    Pc_prev = similar(Pc_iter)
+
+    while err > tol && iter < maxiter
+        H_prev  .= H_iter
+        Pc_prev .= Pc_iter
+
+        χiter = params.χ.(H_iter)
+        ϕ     = χiter .* H_iter
+        update_dg_ϕ_ops!(ϕ, χiter, params, t_ops)
+        solve_Pc_DG!(Pc_iter, params, t_ops)
+
+        # need to still update Q i.e. contract with Pc
+        Q_new = g_ops.Q
+
+        L_new = S .+ K .+ Q_new
+        L_old = S .+ K .+ Q_old
+        A = M .+ (Δt/2) .* L_new
+        R = (M .- (Δt/2) .* L_old) * H0 .+ Δt .* (F .+ b)
+        H_iter .= A \ R
+
+        err_H  = norm(H_iter  .- H_prev)  / (norm(H_prev)  + eps)
+        err_Pc = norm(Pc_iter .- Pc_prev) / (norm(Pc_prev) + eps)
+        err = max(err_H, err_Pc)
+        iter += 1
+    end
+
+    if iter == maxiter
+        @printf "Maximum non-linear iterations exceeded (DG)\n"
+    end
+
+    H  .= H_iter
+    Pc .= Pc_iter
+    return H
 end

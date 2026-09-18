@@ -54,7 +54,7 @@ let
     # reg == true is implicit-only
     reg = false
     # if DG then regularization is ignored
-    DG = true
+    DG = false
     # inflow or outflow problem
     inflow = true
     
@@ -81,7 +81,7 @@ let
     # number of elements
     #Nes = 8:8:8 + (8 * 8)
     #for Ne in Nes
-    Ne = 3
+    Ne = 64
     # basis order
     p = 2
     # number basis functions
@@ -94,7 +94,7 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 5 * he
+    ϵ = 1 * he
     # permeability floor for the regularized (whole-domain) compaction solve
     ϵp = 0
     # strength of compaction pressure regularization
@@ -170,12 +170,11 @@ let
             Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
             t_ops = tOps(nnzt, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
 
-            Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N)
-            error()
+            Kc = get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N, DG)
             g_ops = gOps(spzeros(N,N),
                          S, F, zeros(N),
                          Mlump, M,
-                         spzeros(pN,N), Kc)
+                         spzeros(N,N), Kc)
             
         # continuous regularized 
         elseif reg
@@ -187,7 +186,7 @@ let
             Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
             t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
             Q = sparse(I, J, ones(nnz), N, N)
-            fill!(Q0.nzval, 0.0)
+            fill!(Q.nzval, 0.0)
             Msupg = sparse(I, J, ones(nnz), N, N)
             fill!(Msupg.nzval, 0.0)
             g_ops = gOps(Q,
