@@ -278,7 +278,6 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
         H_prev  .= H_iter
         Pc_prev .= Pc_iter
 
-        # relinearize coupled operators at the current iterate
         χiter = params.χ.(H_iter)
         ϕ =  χiter .* H_iter
         update_reg_ϕ_ops!(ϕ, χiter, params, t_ops)

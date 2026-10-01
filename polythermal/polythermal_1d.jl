@@ -64,11 +64,11 @@ let
     SUPG = true
     # chi-regularization
     # reg == true is implicit-only
-    reg = false
+    reg = true
     # if DG then regularization is ignored
-    DG = true
+    DG = false
     # inflow or outflow problem
-    inflow = true
+    inflow = false
     
     #---- physical parameters ----#
     u(z) = nothing
@@ -106,7 +106,7 @@ let
     # length of element
     he = (L-B)/Ne
     # regularization function
-    ϵ = 1 * he
+    ϵ = 8 * he
     # permeability floor for the regularized (whole-domain) compaction solve
     ϵp = 0
     # strength of compaction pressure regularization
@@ -254,13 +254,13 @@ let
               χ = χfunc)
 
     t_final = .75
-    Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
+    #Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
     
     dgMem = new_dg_mem(N)
     #operator_eigens(S, M)
-    for i = 1:10
+    for i = 1:tsteps
         #test_advect_diffusion_DG!(S, M, K, b, H, Δt)
         if DG
             timestep_DG!(H, Pc, b, params, t_ops, g_ops, dgMem, Δt)

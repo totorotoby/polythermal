@@ -272,7 +272,6 @@ end
 
 function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕbase, Tsurf)
 
-    u = u(.5)
 
     for e in 1:Ne
         
@@ -284,8 +283,8 @@ function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕ
             idxR = Nbasis * (e-1) + 1
             idxL = Nbasis * (e-1)
 
-            add_to_V!(I, J, advFlux, -(1/2 * u - 1/2 * abs(u)), idxR, idxR)
-            add_to_V!(I, J, advFlux, -(1/2 * u + 1/2 * abs(u)), idxR, idxL)
+            add_to_V!(I, J, advFlux, -(1/2 * u[idxR] - 1/2 * abs(u[idxR])), idxR, idxR)
+            add_to_V!(I, J, advFlux, -(1/2 * u[idxR] + 1/2 * abs(u[idxR])), idxR, idxL)
         end
         
         if e != Ne
@@ -298,16 +297,16 @@ function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕ
             idxL = Nbasis * (e)
             idxR = idxL + 1
 
-            add_to_V!(I, J, advFlux, 1/2 * u + 1/2 * abs(u), idxL, idxL)
-            add_to_V!(I, J, advFlux, 1/2 * u - 1/2 * abs(u), idxL, idxR)
+            add_to_V!(I, J, advFlux, 1/2 * u[idxL] + 1/2 * abs(u[idxL]), idxL, idxL)
+            add_to_V!(I, J, advFlux, 1/2 * u[idxL] - 1/2 * abs(u[idxL]), idxL, idxR)
         end
 
         # add outflow data
         if e == 1 && inflow
-            add_to_V!(I, J, advFlux, -u, 1, 1)
+            add_to_V!(I, J, advFlux, -u[1], 1, 1)
         end
         if e == Ne && !inflow
-            add_to_V!(I, J, advFlux, u, Ne*Nbasis, Ne*Nbasis)
+            add_to_V!(I, J, advFlux, u[Ne*Nbasis], Ne*Nbasis, Ne*Nbasis)
         end
     end
 end
@@ -806,6 +805,7 @@ function get_advection_matrix(Ne, Nbasis, p, z, u, N, DG, inflow, ϕbase, Tsurf)
         S = sparse(I, J, Vadv, N, N)
         
     else
+        
         assemble_matrix!(Ne, Nbasis, p,
                          z, dlb, lb, u.(z),
                          I, J, Vadv, DG)
@@ -815,7 +815,7 @@ function get_advection_matrix(Ne, Nbasis, p, z, u, N, DG, inflow, ϕbase, Tsurf)
         I = Int64[]
         J = Int64[]
         advFlux = Float64[]
-        assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕbase, Tsurf)
+        assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u.(z), advFlux, inflow, ϕbase, Tsurf)
         Sflux = sparse(I, J, advFlux, N, N)
         S .= S .- Sflux
         
