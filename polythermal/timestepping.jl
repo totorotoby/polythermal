@@ -288,6 +288,7 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
         if params.SUPG
             Msupg = g_ops.Msupg
             Fsupg = g_ops.Fsupg
+            
             A = (M + Msupg) + (Δt/2) * (S + Q_new)
             R = ((M + Msupg) - (Δt/2) * (S + Q_old)) * H0 + Δt * (F + Fsupg)
         else
@@ -363,7 +364,7 @@ function timestep_DG!(H, Pc, b, params, t_ops, g_ops, mem, Δt, tol=1e-8, maxite
 
         # add up operators
         L_new = -S .+ Kc_new .+ Q_new
-
+        Minv = inv(Matrix(M))
         # Crank–Nicolson on enthalpy
         # b holds advective inflow bK_new holds diffusive dirchlet
         A = M .+ (Δt/2) .* L_new

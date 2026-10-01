@@ -53,6 +53,7 @@ let
 
     s(t) = 3t^2 - 2t^3
     initial_enth(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.4 * z + .2
+    #initial_enth(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : -.1 * (z - .5)
     initial_temp(z, Tsurf) = z > .5 ? Tsurf * s.((z - .5) / .5) : 0
     initial_pore(z) = z < .5 ? -.1 * (z - .5) : 0
 
@@ -66,7 +67,7 @@ let
     # reg == true is implicit-only
     reg = true
     # if DG then regularization is ignored
-    DG = false
+    DG = true
     # inflow or outflow problem
     inflow = false
     
@@ -253,8 +254,8 @@ let
               γ = γ,
               χ = χfunc)
 
-    t_final = .75
-    #Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
+    t_final = 1.5
+    Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
     
