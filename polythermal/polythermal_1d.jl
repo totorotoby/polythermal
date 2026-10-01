@@ -32,6 +32,18 @@ mutable struct gOps
     Kc::SparseMatrixCSC{Float64, Int64}
 end
 
+mutable struct dgMem
+    Ik::Vector{Int64}
+    Jk::Vector{Int64}
+    Vk::Vector{Float64}
+    Iq::Vector{Int64}
+    Jq::Vector{Int64}
+    Vq::Vector{Float64}
+    bK::Vector{Float64}
+end
+
+new_dg_mem(N) = dgMem(Int64[], Int64[], Float64[], Int64[], Int64[], Float64[], zeros(N))
+
 let
     #---- testing solutions ----#
     # solution to steady BVP for temperature
@@ -47,14 +59,14 @@ let
 
     #--- Options ---#
     # implicit or explict timestepping
-    implicit = true
+    implicit = false
     # SUPG stabilization
     SUPG = true
     # chi-regularization
     # reg == true is implicit-only
     reg = false
     # if DG then regularization is ignored
-    DG = false
+    DG = true
     # inflow or outflow problem
     inflow = true
     
@@ -105,7 +117,7 @@ let
     z = get_mesh(Ne, p, B, L, N, he, ref_nodes, DG)
     #SUPG strength param
     τ = (he /2 * abs(u(.5)))
-    # SIPG penalty (DG diffusion); scale ~ C * k * p^2 / he
+    # SIPG penalty (DG diffusion)
     σ = 10.0 * p^2 / he
     #---- initial and boundary data ----#
     # surface temperature
@@ -149,7 +161,7 @@ let
     F = zeros(N)
     assemble_global_static_vec_from_local_vec!(Ne, Nbasis,
                                                p, a(.5),
-                                               mv, F, false)
+                                               mv, F, false, DG)
 
     #--- operator/interface setup
     # continuous galerkin
@@ -198,23 +210,22 @@ let
     # Discontinuous galerkin
     else
 
+        # indicator function for diffusion
+        k = ones(N)
         nnz = NNZDG(Ne, Nbasis)
         Kϕ, Mϕ, Mχ, Fϕ = get_temperate_ops(N)
         t_ops = tOps(nnz, Kϕ, Mϕ, Mχ, Fϕ, mt, kt, dm, km, st, sv, zeros(N))
-
-        K = get_diffusion_matrix_DG(Ne, Nbasis, p, z, one, N, σ, inflow, Tsurf, ϕbase)
+        K, _ = get_diffusion_operator_DG(Ne, Nbasis, p, z, k, N, σ, Tsurf, ϕbase, inflow)
         Q = spzeros(N, N)
-        
         g_ops = gOps(Q,
                      S, F, zeros(N),
                      Mlump, M,
                      spzeros(N,N), K)
-
-        b = get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase) .+
-            get_diffusion_boundary(N, Ne, Nbasis, p, z, one, σ, inflow, Tsurf, ϕbase)
+        b=zeros(N)
+        set_advective_boundary!(b, N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
+        
     end
 
-    
     params = (inflow = inflow,              
               implicit = implicit,
               SUPG = SUPG,
@@ -235,23 +246,24 @@ let
               g = g,
               κ = κ,
               τ = τ,
+              σ = σ,
               reg = reg,
               ϵ = ϵ,
               ϵp = ϵp,
               γ = γ,
               χ = χfunc)
 
-    t_final = 2
-    #Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
+    t_final = .75
+    Δt = 0.7 * he / (abs(u(1)) * (2p + 1))
     tsteps = Int(ceil(t_final / Δt))
 
+    
+    dgMem = new_dg_mem(N)
     #operator_eigens(S, M)
-    for i = 1:tsteps
-        
-        #test_advect_DG!(S, M, b, H, Δt)
-
+    for i = 1:10
+        #test_advect_diffusion_DG!(S, M, K, b, H, Δt)
         if DG
-            timestep_DG!(H, Pc, b, params, t_ops, g_ops, Δt)
+            timestep_DG!(H, Pc, b, params, t_ops, g_ops, dgMem, Δt)
         elseif !reg
             (Γ, H, Pc) = timestep(H, Pc, Γ, params, t_ops, g_ops, Δt)
         else
@@ -262,14 +274,18 @@ let
             plt = plot()
             nodes = 1:Nbasis
             for e = 1:Ne
-                plot!(plt, H[nodes], z[nodes], color=:orange, legend=false, xlims=[-0.5, .5])
+                plot!(plt, H[nodes], z[nodes], color=:orange, legend=false)
+                plot!(plt, Pc[nodes], z[nodes], color=:blue, legend=false)
                 nodes = nodes[end] + 1 : nodes[end] + Nbasis
             end
             display(plt)
         else
-            plot(H, z, label="H")
-            display(plot!(Pc, z, label="Pc"))
+            plt = plot()
+            plot!(plt, H, z, label="H")
+            plot!(plt, Pc, z, label="Pc")
+            display(plt)
         end
+
     end
 
     #=

@@ -4,13 +4,9 @@ using Printf
 include("assemble.jl")
 include("sol_tests.jl")
 
-function test_advect_DG!(S, M, b, h, Δt)
-    f(v) = M \ (S*v .+ b)
-    k1 = f(h)
-    k2 = f(h .+ Δt/2 .* k1)
-    k3 = f(h .+ Δt/2 .* k2)
-    k4 = f(h .+ Δt   .* k3)
-    h .= h .+ Δt/6 .* (k1 .+ 2k2 .+ 2k3 .+ k4)
+function test_advect_diffusion_DG!(S, M, K, b, h, Δt)
+    A = M .+ Δt .* K
+    h .= A \ (M * h .+ Δt .* (S * h .+ b))
 end
 
 function operator_eigens(S, M)
@@ -68,10 +64,6 @@ function timestep_reg(H, Pc, params, t_ops, g_ops, Δt)
     reg_picard!(H, Pc, params, t_ops, g_ops,
                 inflow, Δt, Tsurf, ϕbase, 1e-8, 200)
 
-    
-    plot(Pc, params.z, label="Pc")
-    display(plot!(H, params.z, label="H"))
-
     return (H, Pc)
 end
 
@@ -116,8 +108,8 @@ function solve_Pc_DG!(Pc, params, t_ops)
     η = params.η
     g = params.g
 
-    A = -κ * δ .* t_ops.Kϕ - params.γ .* t_ops.Mχ - 1/η .* t_ops.Mϕ
-    R = κ * g .* t_ops.Fϕ .+ t_ops.bpc
+    A = - κ * δ .* t_ops.Kϕ - params.γ .* t_ops.Mχ - 1/η .* t_ops.Mϕ
+    R = κ * g .* t_ops.Fϕ .- κ * δ .* t_ops.bpc
 
     Pc .= A \ R
 end
@@ -327,59 +319,71 @@ function reg_picard!(H, Pc, params, t_ops, g_ops,
 end
 
 # still need to figure out how diffusion coeffcient works
-function timestep_DG!(H, Pc, b, params, t_ops, g_ops, Δt, tol=1e-8, maxiter=200)
+function timestep_DG!(H, Pc, b, params, t_ops, g_ops, mem, Δt, tol=1e-8, maxiter=200)
+
+    # unpack static operators
     M = g_ops.M
     S = g_ops.S
-    K = g_ops.Kc
     F = g_ops.F
 
-    eps  = 1e-12
+    # picard iterations params, etc.
+    eps = 1e-12
     iter = 0
-    err  = Inf
+    dist = Inf
 
+    # Get current timesteps enthalpy, compaction and porosity
     H0 = copy(H)
     χ0 = params.χ.(H0)
     ϕ0 = χ0 .* H0
     update_dg_ϕ_ops!(ϕ0, χ0, params, t_ops)
     solve_Pc_DG!(Pc, params, t_ops)
+    Kc_old, _, Q_old = build_dg_enthalpy_ops!(mem, H0, Pc, params)
+    L_old = -S .+ Kc_old .+ Q_old
 
-    Q_old = copy(g_ops.Q)
-    # need to still update Q i.e. contract with Pc
-    
-    H_iter  = copy(H0)
+    # set current and previous iteration enthalpy and compaction
+    H_iter = copy(H0)
     Pc_iter = copy(Pc)
-    H_prev  = similar(H_iter)
+    H_prev = similar(H_iter)
     Pc_prev = similar(Pc_iter)
 
-    while err > tol && iter < maxiter
-        H_prev  .= H_iter
+    # start picard loop and exit once error or max iteration is exceeded
+    while dist > tol && iter < maxiter
+
+        # iter is now previous
+        H_prev .= H_iter
         Pc_prev .= Pc_iter
 
+        # solve linearized compaction for this iteration
         χiter = params.χ.(H_iter)
-        ϕ     = χiter .* H_iter
-        update_dg_ϕ_ops!(ϕ, χiter, params, t_ops)
+        ϕiter = χiter .* H_iter
+        update_dg_ϕ_ops!(ϕiter, χiter, params, t_ops)
         solve_Pc_DG!(Pc_iter, params, t_ops)
 
-        # need to still update Q i.e. contract with Pc
-        Q_new = g_ops.Q
+        # rebuild enthalpy operators at the current Pc, and H
+        Kc_new, bK_new, Q_new = build_dg_enthalpy_ops!(mem, H_iter, Pc_iter, params)
 
-        L_new = S .+ K .+ Q_new
-        L_old = S .+ K .+ Q_old
+        # add up operators
+        L_new = -S .+ Kc_new .+ Q_new
+
+        # Crank–Nicolson on enthalpy
+        # b holds advective inflow bK_new holds diffusive dirchlet
         A = M .+ (Δt/2) .* L_new
-        R = (M .- (Δt/2) .* L_old) * H0 .+ Δt .* (F .+ b)
+        R = (M .- (Δt/2) .* L_old) * H0 .+ Δt .* (F .+ b .+ bK_new)
         H_iter .= A \ R
 
-        err_H  = norm(H_iter  .- H_prev)  / (norm(H_prev)  + eps)
-        err_Pc = norm(Pc_iter .- Pc_prev) / (norm(Pc_prev) + eps)
-        err = max(err_H, err_Pc)
+        # check how close together compaction and enthalpy iterations are
+        # and use the larger as the stopping criteria
+        dist_H = norm(H_iter .- H_prev) / (norm(H_prev) + eps)
+        dist_Pc = norm(Pc_iter .- Pc_prev) / (norm(Pc_prev) + eps)
+        dist = max(dist_H, dist_Pc)
         iter += 1
     end
 
     if iter == maxiter
         @printf "Maximum non-linear iterations exceeded (DG)\n"
     end
-
-    H  .= H_iter
+    
+    H .= H_iter
     Pc .= Pc_iter
-    return H
+    
 end

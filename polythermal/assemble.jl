@@ -149,14 +149,14 @@ function get_sparsity(Ne, nnz, Nbasis, p)
 end
 
 
-function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition)
+function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, addition, DG=false)
 
     if !addition
         F[:] .= 0
     end
     
     for e in 1:Ne
-        idx = EToN(e,p)
+        idx = EToN(e, Nbasis, p, DG)
         for i in 1:Nbasis
             F[idx[i]] += g * t_e[i]
         end
@@ -164,25 +164,25 @@ function assemble_global_static_vec_from_local_vec!(Ne, Nbasis, p, g, t_e, F, ad
 end
 
 
-function assemble_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M, addition)
+function assemble_global_from_local_static_mat!(Ne, Nbasis, p, g, t_e, M, addition, DG=false)
 
     if !addition
         M[:, :] .= 0
     end
     
     for e in 1:Ne
-        idx=EToN(e, p)
+        idx=EToN(e, Nbasis, p, DG)
         for i in 1:Nbasis, j in 1:Nbasis
             M[idx[i], idx[j]] += g * t_e[i,j]
         end
     end
 end
 
-function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F)
+function assemble_global_vec_from_local_mat!(Ne, Nbasis, p, g, t_e, F, DG=false)
 
     F[:] .= 0
     for e in 1:Ne
-        idx=EToN(e, p)
+        idx=EToN(e, Nbasis, p, DG)
         glocal = @view g[idx]
         k_e = t_e * glocal
         for i in 1:Nbasis
@@ -197,11 +197,11 @@ Takes local element tensor and contracts to matrix with Σ_k g_k int(ψ_iψ_jψ_
 where int(...) comes from assemble_local_tensor, and places entries into global matrix. that is g is length n
 =#
 # NOTE: NEEDS MAG JACOBIAN FOR NON-UNIFORM MESH
-function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Float64})
+function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Float64}, DG=false)
 
     c = 1
     for e in 1:Ne
-        idx = EToN(e, p)
+        idx = EToN(e, Nbasis, p, DG)
         glocal = @view g[idx]
         k_e = zeros(Nbasis, Nbasis)
         for i in 1:Nbasis, j in 1:Nbasis
@@ -218,13 +218,13 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e, V::Vector{Flo
 end
 
 function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
-                                            M::SparseMatrixCSC{Float64, Int64}, addition)
+                                            M::SparseMatrixCSC{Float64, Int64}, addition, DG=false)
     if !addition
         M[:] .= 0
     end
     
     for e in 1:Ne
-        idx=EToN(e, p)
+        idx=EToN(e, Nbasis, p, DG)
         glocal = @view g[idx]
         # do flattened tensor multiple giving flattened local 2d matrix
         k_e = zeros(Nbasis,Nbasis)
@@ -242,35 +242,33 @@ function assemble_global_from_local_tensor!(Ne, Nbasis, p, g, t_e,
 end
 
 
-function assemble_matrix!(Ne, Nbasis, p,
-                          x, func1, func2, k,
-                          I, J, V, DG)
-    
+function assemble_matrix!(Ne, Nbasis, p, x, func1, func2, k, I, J, V, DG)
     for e in 1:Ne
+        gidx  = EToN(e, Nbasis, p, DG)
+        nodes = x[gidx]
+        k_loc = k[gidx]
+
+        kfun = xq -> sum(k_loc[a] * lb(xq, a, nodes) for a in 1:Nbasis)
+        
         for i in 1:Nbasis
-            row = DG ? ((p+1)*(e-1) + i) : (p*e) + (i-p)
+            row = gidx[i]
             for j in 1:Nbasis
-                col = DG ? ((p+1)*(e-1) + j) : (p*e) + (j-p)
-                nodes = DG ? x[(e - 1)*Nbasis+1:e*Nbasis] : EToX(e, p, x)
-                v = gauss_integrate(nodes, p, 1, x -> func1(x, i, nodes) , x ->  func2(x, j, nodes), k)
+                col = gidx[j]
+                v = gauss_integrate(nodes, p, 1,
+                                    xq -> func1(xq, i, nodes),
+                                    xq -> func2(xq, j, nodes),
+                                    kfun)
                 add_to_V!(I, J, V, v, row, col)
             end
         end
     end
 end
 
-
-function add_to_V!(I, J, V, v, row, col)
-    
-    idx = inCOO(I, J, row, col)
-    if idx > 0 
-        V[idx] += v
-    else
-        push!(I, row)
-        push!(J, col)
-        push!(V, v)
-    end
-end
+@inline function add_to_V!(I, J, V, v, row, col)
+    push!(I, row)
+    push!(J, col)
+    push!(V, v)
+ end
 
 function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕbase, Tsurf)
 
@@ -305,169 +303,144 @@ function assemble_advective_flux!(Ne, Nbasis, p, z, I, J, u, advFlux, inflow, ϕ
         end
 
         # add outflow data
-        # purely for testing upwinding
-        #=
         if e == 1 && inflow
             add_to_V!(I, J, advFlux, -u, 1, 1)
         end
-        =#
         if e == Ne && !inflow
             add_to_V!(I, J, advFlux, u, Ne*Nbasis, Ne*Nbasis)
         end
     end
 end
 
-function get_advective_boundary(N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
+function set_advective_boundary!(b, N, Ne, Nbasis, u, inflow, Tsurf, ϕbase)
     u = u(.5)
-    b = zeros(N)
     # u<0, inflow at z=1, data = Tsurf
-    # purely for testing upwinding
-    #=
     if inflow            
-       b[Ne*Nbasis] = -u * Tsurf
+        b[Ne*Nbasis] = -u * Tsurf
+    end
     # u>0: inflow at z=0, data = ϕbase
-    =#
     if !inflow
-        b[1] = u * ϕbase
+        b[1] += u * ϕbase
     end
     return b
 end
 
-function assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, Tsurf, ϕbase)
+function assemble_flux_matrix!(Ne, Nbasis, z, I, J, V, k, σ0, indept_pen=false)
 
-    for e in 1:Ne
+    # skip boundary nodes
+    for e in 2:Ne
 
         # interior face shared by my element (m) and neighboring (n) element
-        if e != 1
-            
-            # my and neighbor element global node indexing
-            m_nodes = ((e - 2) * Nbasis + 1) : ((e - 1) * Nbasis)
-            n_nodes = ((e - 1) * Nbasis + 1) : (e * Nbasis)
-            
-            # m and n element face index
-            m_face = m_nodes[end]
-            n_face = n_nodes[1]
-            
-            # m and n element coordinates
-            z_m = z[m_nodes]
-            z_n = z[n_nodes]
-            
-            # face coordinate
-            z_face = z[(e - 1) * Nbasis + 1]
+        # my and neighbor element global node indexing
+        m_nodes = ((e - 2) * Nbasis + 1) : ((e - 1) * Nbasis)
+        n_nodes = ((e - 1) * Nbasis + 1) : (e * Nbasis)
+
+        # m and n element face index
+        m_face  = m_nodes[end]
+        n_face  = n_nodes[1]
+        
+        # m and n element coordinates
+        z_m     = z[m_nodes]
+        z_n     = z[n_nodes]
+        
+        # face coordinate
+        z_face  = z[n_face]
+        
+        # get flux on either face to take average 
+        km      = k[m_face] 
+        kn      = k[n_face] 
+
+        for j in 1:Nbasis
+
+            #derivative of test function on my element
+            dψm = dlb(z_face, j, z_m)
+            # on neighbor element
+            dψn = dlb(z_face, j, z_n)
+
+            # the 4 consistency and adjoint terms
+            Cmm = -0.5 * km * dψm
+            Cmn = -0.5 * kn * dψn
+            Cnm =  0.5 * km * dψm
+            Cnn =  0.5 * kn * dψn
 
             # consistency: {dh/dz}[ψ]
             # for each side (m and n) this is -1/2 dh/dz (ψ = 1 only on the face),
             # which when adding to the matrix need the d/dz operator and h is
             # held in the vector meaning distrbute differentiation over the columns
             # and not rows. Distrubting out consistency gives 4 terms.
-            
-            for j in 1:Nbasis
-                # left m face dependent on element m
-                add_to_V!(I, J, Vdiff, - .5 *k * dlb(z_face, j, z_m), m_face, m_nodes[j])
-                # left m face dependent on element n
-                add_to_V!(I, J, Vdiff, - .5 *k * dlb(z_face, j, z_n), m_face, n_nodes[j])
-                # right n element dependent on element n
-                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, j, z_m), n_face, m_nodes[j])
-                # right n element dependent on element m
-                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, j, z_n), n_face, n_nodes[j])
-            end
+            add_to_V!(I, J, V, Cmm, m_face, m_nodes[j])
+            add_to_V!(I, J, V, Cmn, m_face, n_nodes[j])
+            add_to_V!(I, J, V, Cnm, n_face, m_nodes[j])
+            add_to_V!(I, J, V, Cnn, n_face, n_nodes[j])
 
             # adjoint consistency: {dψ/dz}[h]
             # this is the opposite of consistency in the sense that we only pull h from
             # the single face node, but the derivative of the test function is distributed
             # over the rows
-
-            for i in 1:Nbasis
-                # left m element dependent on face m
-                add_to_V!(I, J, Vdiff, - .5 * k * dlb(z_face, i, z_m), m_nodes[i], m_face)
-                # left m element dependent on face n
-                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, i, z_m), m_nodes[i], n_face)
-                # left n element dependent on face m
-                add_to_V!(I, J, Vdiff, - .5 * k * dlb(z_face, i, z_n), n_nodes[i], m_face)
-                # right n element dependent on face n
-                add_to_V!(I, J, Vdiff, .5 * k * dlb(z_face, i, z_n), n_nodes[i], n_face)
-            end
+            add_to_V!(I, J, V, Cmm, m_nodes[j], m_face)
+            add_to_V!(I, J, V, Cmn, n_nodes[j], m_face)
+            add_to_V!(I, J, V, Cnm, m_nodes[j], n_face)
+            add_to_V!(I, J, V, Cnn, n_nodes[j], n_face)
         end
 
         # penalty: σ (h^m - h^n)
-        # left face penalty coupling
-        add_to_V!(I, J, Vdiff, σ, m_face, m_face)
-        add_to_V!(I, J, Vdiff, -σ, m_face, n_face)
-        # right face penalty coupling
-        add_to_V!(I, J, Vdiff, -σ, n_face, m_face)
-        add_to_V!(I, J, Vdiff, σ, n_face, n_face)
-        
-
-        # surface dirichlet condition
-        m_nodes = ((Ne-1)*Nbasis + 1) : (Ne*Nbasis)
-        m_z = z[m_nodes]
-        f = m_nodes[end]
-        z_f = z[f]
-        
-        for j in 1:Nbasis
-            d = dlb(z_f, j, m_z)
-            # consistency
-            add_to_V!(I, J, Vdiff, -k * d, f, m_nodes[j])
-            # adjoint consistency
-            add_to_V!(I, J, Vdiff, -k * d, m_nodes[j], f)
-        end
-        # penalty
-        add_to_V!(I, J, Vdiff, σ, f, f)
-        
+        σ_face = indept_pen ? σ0 : σ0 * 0.5 * (km + kn)
+        # my face penalty coupling
+        add_to_V!(I, J, V,  σ_face, m_face, m_face)
+        add_to_V!(I, J, V, -σ_face, m_face, n_face)
+        # neighbor face penalty coupling
+        add_to_V!(I, J, V, -σ_face, n_face, m_face)
+        add_to_V!(I, J, V,  σ_face, n_face, n_face)
     end
+    
 end
 
-function get_diffusion_matrix_DG(Ne, Nbasis, p, z, k, N, σ, inflow, Tsurf, ϕbase)
+
+function impose_dg_dirichlet!(I, J, V, b, Nbasis, z, k, σ0, face, elem_nodes, normal, g, indept_pen=false)
+    
+    z_nodes = z[elem_nodes]
+    z_face  = z[face]
+    kf      = k[face]
+
+    for j in 1:Nbasis
+        d = dlb(z_face, j, z_nodes)
+        # adjoint consistency
+        add_to_V!(I, J, V, -normal * kf * d, face, elem_nodes[j])
+        add_to_V!(I, J, V, -normal * kf * d, elem_nodes[j], face)
+        b[elem_nodes[j]] += -normal * kf * d * g
+    end
+
+    # penalty
+    σ_face = indept_pen ? σ0 : σ0 * kf
+    add_to_V!(I, J, V, σ_face, face, face)
+    b[face] += σ_face * g
+    
+end
+
+function get_diffusion_operator_DG(Ne, Nbasis, p, z, k, N, σ0, Tsurf, ϕbase, inflow)
+    
     I = Int64[]
     J = Int64[]
-    Vdiff = Float64[]
-    
-    assemble_matrix!(Ne, Nbasis, p, z, dlb, dlb, k, I, J, Vdiff, true)
-    assemble_diffusive_flux!(Ne, Nbasis, p, z, I, J, Vdiff, k, σ, inflow, Tsurf, ϕbase)
-    K = sparse(I, J, Vdiff, N, N)
-    
-    return K
-end
-
-function get_diffusion_boundary(N, Ne, Nbasis, p, z, k, σ, inflow, Tsurf, ϕbase)
-    
+    V = Float64[]
     b = zeros(N)
+
+    # volume stiffness matrix
+    assemble_matrix!(Ne, Nbasis, p, z, dlb, dlb, k, I, J, V, true)
+
+    # interior SIPG flux terms
+    assemble_flux_matrix!(Ne, Nbasis, z, I, J, V, k, σ0)
+
+    # Dirichlet at both ends
+    surf_nodes = ((Ne - 1) * Nbasis + 1) : (Ne * Nbasis)
+    base_nodes = 1 : Nbasis
+    impose_dg_dirichlet!(I, J, V, b, Nbasis, z, k, σ0, surf_nodes[end], surf_nodes, 1.0, Tsurf)
+    # purely for testing
+    #if !inflow
+    #    impose_dg_dirichlet!(I, J, V, b, Nbasis, z, k, σ0, base_nodes[1],  base_nodes, -1.0, ϕbase)
+    #end
+    K = sparse(I, J, V, N, N)
     
-    # surface dirichlet condition
-    surf_nodes = (Ne - 1) * Nbasis + 1 : Ne * Nbasis
-    surf_z = z[surf_nodes]
-    surf_face = z[Ne * Nbasis]
-
-    for i in 1:Nbasis
-        b[surf_nodes[i]] = -k * dlb(surf_face, i, surf_nodes) * Tsurf
-    end
-    
-    b[Ne * Nbasis] += σ * Tsurf
-    
-    return b
-end
-
-function assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕ, α, σ, Pcbase)
-    for e in 1:Ne
-        
-        if e != 1
-            
-            m_nodes = ((e-2)*Nbasis + 1) : ((e-1)*Nbasis)
-            n_nodes = ((e-1)*Nbasis + 1) : ( e   *Nbasis)
-            z_f     = z[(e-1)*Nbasis + 1]
-
-        end
-        
-        # Pcbase boundary
-        if e == 1
-            
-        end
-    end
-end
-
-function get_compaction_boundary(N, Ne, Nbasis, p, z, ϕ, α, κ, δ, σ, Pcbase)
-    b = zeros(N)
-    return b
+    return K, b
 end
 
 function assemble_forcing!(Ne, Nbasis, p, x, func1, func2, forcing, F)
@@ -526,28 +499,28 @@ function lb(x, j, nodes)
     end
 end
 
-# basis function derivative
-dlb(x, j, nodes) = ForwardDiff.derivative(x -> lb(x, j, nodes), x)
 
-
-function interpolate_lagrangian_global(x_nodes, u_nodes, p, x_plot)
-    u_plot = zeros(length(x_plot))
+function dlb(x, j, nodes)
     
-    for (i, xp) in enumerate(x_plot)
-        e, local_nodes = XToN(xp, p, x_nodes)
+    n = length(nodes)
+    s = zero(x)
+    
+    for m in 1:n
+        m == j && continue
         
-        local_inds = EToN(e, p)
-        local_u = u_nodes[local_inds]
-        
-        val = 0.0
-        for j in 1:length(local_nodes)
-            val += local_u[j] * lb(xp, j, local_nodes)
+        term = 1.0 / (nodes[j] - nodes[m])
+        for l in 1:n
+            (l == j || l == m) && continue
+            
+            term *= (x - nodes[l]) / (nodes[j] - nodes[l])
+            
         end
-        u_plot[i] = val
+        s += term
     end
+    return s
     
-    return u_plot
 end
+
 
 # p order lagrangian basis expansion with current coords at x
 function expansion(x, p, coords, n_global)
@@ -575,6 +548,7 @@ end
 
 EToX(e, p, nodes) = nodes[(e-1)*p + 1 : (e-1)*p + p + 1]
 EToN(e, p) = (e-1)*p + 1 : (e-1)*p + p + 1
+EToN(e, Nbasis, p, DG) = DG ? ((e-1)*Nbasis + 1 : e*Nbasis) : EToN(e, p)
 NNZ(Ne, Nbasis) = Ne * (Nbasis)^2 - Ne + 1
 NNZDG(Ne, Nbasis) = Ne * (Nbasis)^2
 
@@ -595,7 +569,7 @@ function get_temperate_ops(N)
     return Kϕ, Mϕ, Mχ, Fϕ
     
 end
-
+    
 function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
 
     ϕtemp = ϕ .+ params.ϵp
@@ -606,6 +580,64 @@ function update_ϕ_ops!(Γ, ϕ, Nt, params, t_ops)
                                        ϕtemp, t_ops.mt, t_ops.Mϕ, false)
     assemble_global_vec_from_local_mat!(Γ, params.Nbasis, params.p,
                                         ϕtemp.^(params.α), t_ops.dm, t_ops.Fϕ)
+end
+
+function build_dg_enthalpy_ops!(mem, H, Pc, params)
+
+    # unpack all parameters
+    Ne = params.Ne
+    Nbasis = params.Nbasis
+    p = params.p
+    z = params.z
+    N = params.N
+    η = params.η
+    σ0 = params.σ
+    Tsurf = params.Tsurf
+    inflow = params.inflow
+    ϕbase = params.ϕbase 
+
+    # get diffusion indicator for enthalpy
+    χ = params.χ.(H)
+    kcold = 1.0 .- χ
+
+    # empty memory to rebuild
+    empty!(mem.Ik)
+    empty!(mem.Jk)
+    empty!(mem.Vk)
+    fill!(mem.bK, 0.0)
+
+    # reassemble diffusion matrix with current interface indicator 
+    assemble_matrix!(Ne, Nbasis, p, z, dlb, dlb, kcold, mem.Ik, mem.Jk, mem.Vk, true)
+    # add dg SIPG flux terms
+    assemble_flux_matrix!(Ne, Nbasis, z, mem.Ik, mem.Jk, mem.Vk, kcold, σ0)
+    # impose dirchlet for Tsurf on top
+    surf = ((Ne - 1) * Nbasis + 1) : (Ne * Nbasis)
+    impose_dg_dirichlet!(mem.Ik, mem.Jk, mem.Vk, mem.bK,
+                         Nbasis, z, kcold, σ0, surf[end], surf,
+                         1.0, Tsurf)
+
+
+    # impose dirchlet on base if flowing upwards
+    if !inflow
+        base = 1 : Nbasis
+        impose_dg_dirichlet!(mem.Ik, mem.Jk, mem.Vk, mem.bK,
+                             Nbasis, z, kcold, σ0, base[1], base,
+                             -1.0, ϕbase, true)
+    end
+
+    # get sparse diffusion
+    Kc = sparse(mem.Ik, mem.Jk, mem.Vk, N, N)
+
+    # empty memory and rebuild Pc source term
+    empty!(mem.Iq)
+    empty!(mem.Jq)
+    empty!(mem.Vq)
+
+    pcSource = (χ .^ 2 .* Pc) ./ η
+    assemble_matrix!(Ne, Nbasis, p, z, lb, lb, pcSource, mem.Iq, mem.Jq, mem.Vq, true)
+    Q = sparse(mem.Iq, mem.Jq, mem.Vq, N, N)
+
+    return Kc, mem.bK, Q
 end
     
 function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
@@ -638,18 +670,18 @@ function update_enthalpy_ops!(Γ, Nt, Pc, params, t_ops, g_ops)
     g_ops.Q[Nt:end, Nt:end] += g_ops.Kc[Nt:end, Nt:end]
 end
 
-function update_reg_ϕ_ops!(ϕ, χ, params, t_ops)
+function update_reg_ϕ_ops!(ϕ, χ, params, t_ops, DG=false)
     
     ϕpos = max.(ϕ, 0.0)
     
     assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
-                                       ϕpos.^(params.α), t_ops.kt, t_ops.Kϕ, false)
+                                       ϕpos.^(params.α), t_ops.kt, t_ops.Kϕ, false, DG)
     assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
-                                       ϕpos, t_ops.mt, t_ops.Mϕ, false)
+                                       ϕpos, t_ops.mt, t_ops.Mϕ, false, DG)
     assemble_global_from_local_tensor!(params.Ne, params.Nbasis, params.p,
-                                       (1 .- χ), t_ops.mt, t_ops.Mχ, false)
+                                       (1 .- χ), t_ops.mt, t_ops.Mχ, false, DG)
     assemble_global_vec_from_local_mat!(params.Ne, params.Nbasis, params.p,
-                                        ϕpos.^(params.α), t_ops.dm, t_ops.Fϕ)
+                                        ϕpos.^(params.α), t_ops.dm, t_ops.Fϕ, DG)
 end
 
 function update_dg_ϕ_ops!(ϕ, χ, params, t_ops)
@@ -662,25 +694,33 @@ function update_dg_ϕ_ops!(ϕ, χ, params, t_ops)
     α = params.α
     κ = params.κ
     δ = params.δ
+    σ = params.σ
     Pcbase = params.Pcbase
 
     # penalty parameter
-    σ = 10.0 * p^2 / (z[Nbasis+1] - z[1])
-
     ϕpos = max.(ϕ, 0.0)
 
     # reuse regularized volume operators for Pc
-    update_reg_ϕ_ops!(ϕ, χ, params, t_ops)
+    update_reg_ϕ_ops!(ϕ, χ, params, t_ops, true)
 
     # add SIPG face terms on
     I = Int64[]
     J = Int64[]
-    Vpc = Float64[]
-    
-    assemble_compaction_flux!(Ne, Nbasis, p, z, I, J, Vpc, ϕpos, α, σ, Pcbase)
-    t_ops.Kϕ = t_ops.Kϕ .+ sparse(I, J, Vpc, N, N)
+    V = Float64[]
 
-    t_ops.bpc = get_compaction_boundary(N, Ne, Nbasis, p, z, ϕpos, α, κ, δ, σ, Pcbase)
+    # precompute flux
+    k = ϕpos .^ α
+    assemble_flux_matrix!(Ne, Nbasis, z, I, J, V, k, σ, true)
+
+    # impose Pcbase on bottom
+    b = zeros(N)
+    base_nodes = 1 : Nbasis
+    impose_dg_dirichlet!(I, J, V, b, Nbasis, z, k, σ, base_nodes[1], base_nodes, -1.0, Pcbase, true)
+    
+    # add face terms on to matrix
+    t_ops.Kϕ  = t_ops.Kϕ .+ sparse(I, J, V, N, N)
+    t_ops.bpc = b
+    
 end
 
 function update_reg_ethalpy_ops!(H, Pc, params, t_ops, g_ops)
@@ -722,7 +762,7 @@ function get_lumped_mass(Ne, Nbasis, p, z, N, DG)
     diag = zeros(N)
     assemble_matrix!(Ne, Nbasis, p,
                      z, lb, lb,
-                     one,
+                     ones(length(z)),
                      I, J, Vmass, DG)
 
     for nz = 1:length(I)
@@ -745,7 +785,7 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N, DG)
     J = Int64[]
     Vdiff = Float64[]
     assemble_matrix!(Γc, Nbasis, p,
-                     z, dlb, dlb, one,
+                     z, dlb, dlb, ones(length(z)),
                      I, J, Vdiff, DG)
     I = I .+ (Nt - 1)
     J = J .+ (Nt - 1)
@@ -754,20 +794,20 @@ function get_diffusion_matrix(Γc, Nt, Nbasis, p, z, N, DG)
 end
 
 function get_advection_matrix(Ne, Nbasis, p, z, u, N, DG, inflow, ϕbase, Tsurf)
-    # generate advective (first derivative) operator matrix
+
     I = Int64[]
     J = Int64[]
     Vadv = Float64[]
     if !DG
         assemble_matrix!(Ne, Nbasis, p,
-                         z, lb, dlb, u,
+                         z, lb, dlb, u.(z),
                          I, J, Vadv, DG)
 
         S = sparse(I, J, Vadv, N, N)
         
     else
         assemble_matrix!(Ne, Nbasis, p,
-                         z, dlb, lb, u,
+                         z, dlb, lb, u.(z),
                          I, J, Vadv, DG)
 
         S = sparse(I, J, Vadv, N, N)
